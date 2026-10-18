@@ -1,0 +1,25 @@
+// Browser-side API client. Presentation code calls only these JSON endpoints.
+export interface ApiErrorBody { code: string; message: string; details?: unknown }
+export class ApiError extends Error {
+  constructor(public status: number, public body: ApiErrorBody) {
+    super(body.message);
+  }
+}
+
+export async function api<T = unknown>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
+  const res = await fetch(path, {
+    method: opts.method ?? (opts.body ? "POST" : "GET"),
+    headers: opts.body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? { code: "http_" + res.status, message: `Request failed (${res.status}).` });
+  return data as T;
+}
+
+export function fieldErrors(e: unknown): Record<string, string> {
+  if (!(e instanceof ApiError) || !Array.isArray(e.body.details)) return {};
+  return Object.fromEntries((e.body.details as { path: string; message: string }[]).map((d) => [d.path, d.message]));
+}

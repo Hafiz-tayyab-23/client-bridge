@@ -73,3 +73,11 @@ supabase/.temp/
 /.claude/
 /Competition_Rules_and_Guidelines.pdf
 /problem statement.pdf
+
+# Next.js / Node scaffold
+/.pnp
+.pnp.*
+next-env.d.ts
+
+# Local dev database
+.devdb/
