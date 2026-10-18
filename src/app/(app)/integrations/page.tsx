@@ -69,7 +69,7 @@ export default function IntegrationsPage() {
       <section className="card mt"><header><h2><History size={16} />Synchronization history</h2><span className="faint">Every inbound webhook and outbound call</span></header>
         {!events.data ? <Loading /> : events.data.events.length === 0 ? <div className="empty">No provider traffic yet.</div> : (
           <div className="tw"><table className="stk"><thead><tr><th scope="col">Time</th><th scope="col">Provider</th><th scope="col">Direction</th><th scope="col">Event</th><th scope="col">Result</th><th scope="col">Reference / detail</th></tr></thead>
-            <tbody>{events.data.events.filter((e) => e.provider !== "stripe").map((e) => (
+            <tbody>{events.data.events.filter((e) => e.provider !== "stripe" && e.kind !== "webhook.rejected_sample").map((e) => (
               <tr key={e.id}><td data-l="Time" className="num">{dateTime(e.created_at)}</td><td data-l="Provider"><b>{e.provider}</b></td><td data-l="Direction">{e.direction}</td><td data-l="Event">{e.kind}</td>
                 <td data-l="Result">{e.status === "ok" ? <Pill tone="green" icon={<Check size={12} />}>OK</Pill> : e.status === "duplicate" ? <Pill tone="blue">Duplicate ignored</Pill> : e.status === "retrying" ? <Pill tone="amber">Retrying</Pill> : <Pill tone="red" icon={<X size={12} />}>{e.status === "rejected" ? "Rejected" : "Failed"}</Pill>}</td>
                 <td data-l="Detail"><small>{e.error ?? e.summary ?? ""}</small><code>{e.reference?.slice(0, 28) ?? ""}</code></td></tr>

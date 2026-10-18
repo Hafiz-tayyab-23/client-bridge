@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "../db";
+import { encryptJson } from "../crypto";
 import { AppError, badRequest, notFound } from "../http";
 import { activity } from "../audit";
 import { can, requirePerm, type Actor } from "../permissions";
@@ -48,6 +49,8 @@ export async function handleSafepayWebhook(connectionId: string, rawBody: string
   }
   const v = verifySafepayWebhook(rawBody, signature, secrets.webhookSecret, [secrets.secretKey, secrets.apiKey]);
   if (!v.ok) {
+    // TEMPORARY diagnosis: keep the exact rejected request, encrypted at rest, to check signing bytes offline. Remove after fix.
+    await recordEvent(sql, { workspaceId: ws, provider: "safepay", direction: "inbound", kind: "webhook.rejected_sample", status: "rejected", summary: `enc:${encryptJson({ raw: rawBody, sig: signature })}` });
     await recordEvent(sql, { workspaceId: ws, provider: "safepay", direction: "inbound", kind: "webhook", status: "rejected", error: v.reason });
     throw new AppError(400, "invalid_signature", v.reason ?? "Invalid signature");
   }
