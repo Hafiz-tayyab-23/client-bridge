@@ -12,6 +12,6 @@ export const GET = route(async () => {
 export const POST = route(async (req) => {
   const actor = await requireActor();
   const { invitation, token } = await invite(actor, await readJson(req, InviteInput));
-  const base = process.env.APP_URL || req.nextUrl.origin;
+  const base = req.nextUrl.origin; // the host the inviter is using (works for preview deployments too)
   return json({ invitation, inviteUrl: `${base}/invite?token=${encodeURIComponent(token)}` }, 201);
 });

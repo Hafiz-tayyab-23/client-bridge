@@ -397,6 +397,7 @@ export const LeadListQuery = z.object({
   ownerId: z.string().uuid().optional(),
   q: z.string().trim().max(100).optional(),
   createdFrom: z.string().datetime({ offset: true }).optional(),
+  escalatedWithinHours: z.coerce.number().int().min(1).max(720).optional(),
   page: z.coerce.number().int().min(1).max(10000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
@@ -412,6 +413,7 @@ export async function listLeads(actor: Actor, q: z.infer<typeof LeadListQuery>) 
     ${q.source ? sql`and l.source = ${q.source}` : sql``}
     ${q.ownerId ? sql`and l.owner_id = ${q.ownerId}` : sql``}
     ${q.createdFrom ? sql`and l.created_at >= ${q.createdFrom}` : sql``}
+    ${q.escalatedWithinHours ? sql`and exists (select 1 from lead_assignments ea where ea.lead_id = l.id and ea.kind = 'escalation' and ea.assigned_at >= now() - make_interval(hours => ${q.escalatedWithinHours}))` : sql``}
     ${q.q ? sql`and (l.title ilike ${"%" + q.q + "%"} or c.name ilike ${"%" + q.q + "%"} or c.email ilike ${"%" + q.q + "%"} or c.phone ilike ${"%" + q.q + "%"} or co.name ilike ${"%" + q.q + "%"})` : sql``}`;
   const from = sql`leads l left join users u on u.id = l.owner_id left join contacts c on c.id = l.contact_id left join companies co on co.id = c.company_id`;
   const [{ total }] = await sql`select count(*)::int as total from ${from} where ${where}`;

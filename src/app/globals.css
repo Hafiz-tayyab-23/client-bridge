@@ -342,3 +342,5 @@ a.kpi:hover{border-color:#cfc9fb;box-shadow:0 4px 14px rgba(91,79,233,.12)}
 .right{text-align:right}
 code{font-size:12px;background:var(--line2);padding:1px 5px;border-radius:5px;overflow-wrap:anywhere}
 .matrix td,.matrix th{text-align:center}.matrix td:first-child,.matrix th:first-child{text-align:left}
+
+@media(max-width:720px){.fbar>*{max-width:100%}.fbar .row{flex-wrap:wrap}.fbar .chips{min-width:0}}

@@ -39,6 +39,10 @@ function LeadsScreen() {
   if (q) qs.set("q", q);
   if (source) qs.set("source", source);
   if (owner) qs.set("ownerId", owner);
+  const createdFrom = sp.get("createdFrom");
+  const escalated = sp.get("escalated");
+  if (createdFrom) qs.set("createdFrom", createdFrom);
+  if (escalated) qs.set("escalatedWithinHours", escalated);
   const list = useApi<{ leads: LeadRow[]; total: number; page: number; pageSize: number; serverTime: string }>(`/api/leads?${qs}`, { pollMs: 5000 });
   const counts = useApi<{ counts: Counts }>("/api/leads/summary", { pollMs: 5000 });
   const users = useApi<{ users: { id: string; name: string }[] }>("/api/team/users");
@@ -83,6 +87,8 @@ function LeadsScreen() {
                 <option value="">All owners</option>{users.data?.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </>}
+            {createdFrom && <button className="chip" aria-pressed="true" onClick={() => setParam("createdFrom", null)}>Created today ✕</button>}
+            {escalated && <button className="chip" aria-pressed="true" onClick={() => setParam("escalated", null)}>Escalated in last {escalated}h ✕</button>}
             <span className="badge-live" style={{ marginLeft: "auto" }}><span className="dot" />Live</span>
           </div>
           {list.error && <div className="cb"><ErrorBox>{list.error.message}</ErrorBox></div>}
