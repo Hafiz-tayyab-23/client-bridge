@@ -126,7 +126,7 @@ export async function book(actor: Actor, input: z.infer<typeof BookInput>) {
   const clash = await conflicts(actor, input.userId, token, start, end);
   if (clash.length && !input.allowConflict) throw new AppError(409, "conflict", `${user.name} is busy at that time.`, { conflicts: clash });
   const ev = await gcal<{ id: string; htmlLink: string }>(token, "POST", "/calendars/primary/events", {
-    summary: `${input.title} — ${contact.name}`, description: `Booked from LeadGuard by ${actor.name}.`,
+    summary: `${input.title} — ${contact.name}`, description: `Booked from ClientBridge by ${actor.name}.`,
     start: { dateTime: start.toISOString(), timeZone: input.timezone }, end: { dateTime: end.toISOString(), timeZone: input.timezone },
   });
   await recordEvent(sql, { workspaceId: actor.workspaceId, provider: "google", direction: "outbound", kind: "event.create", status: ev.ok ? "ok" : "error", reference: ev.data?.id, error: ev.error });

@@ -1,4 +1,4 @@
-# LeadGuard — NASCON Web Dev, Team 034
+# ClientBridge — NASCON Web Dev, Team 034
 
 A multi-company sales platform where every incoming lead has exactly one accountable owner. A lead escalates automatically when its owner ignores it, and every important action is traceable.
 

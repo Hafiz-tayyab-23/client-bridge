@@ -6,7 +6,7 @@ import { ToastProvider } from "@/components/ui/toast";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", weight: ["400", "500", "600", "700"] });
 
 export const metadata: Metadata = {
-  title: "LeadGuard — Unified Business Platform",
+  title: "ClientBridge — Unified Business Platform",
   description: "Every lead has one accountable owner. NASCON Web Dev Team 034.",
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };

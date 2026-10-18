@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import {
-  Bell, Building2, CalendarDays, ContactRound, CreditCard, Inbox, Layers, LayoutDashboard, LogOut, Menu, MessagesSquare,
+  Bell, Building2, CalendarDays, ContactRound, CreditCard, Inbox, LayoutDashboard, LogOut, Menu, MessagesSquare,
   PlugZap, ScrollText, Search, Settings, Users,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -106,8 +106,8 @@ export function AppShell({ me, availability: initial, children }: { me: Me; avai
       <div className="app">
         <aside className={`side ${open ? "open" : ""}`} id="side" aria-label="Primary">
           <div className="brand">
-            <span className="logo"><Layers size={18} /></span>
-            <div><b>LeadGuard</b><small>{me.workspace.name}</small></div>
+            <span className="logo" style={{ background: "#fff" }}><img src="/clientbridge-mark.png" alt="" width={28} height={28} /></span>
+            <div><b>ClientBridge</b><small>{me.workspace.name}</small></div>
           </div>
           <nav className="nav" aria-label="Main navigation">
             {NAV.filter((n) => !n.perm || perms.has(n.perm)).map((n) => (

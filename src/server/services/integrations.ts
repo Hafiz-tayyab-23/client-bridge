@@ -92,7 +92,7 @@ export async function connectStripe(actor: Actor, input: z.infer<typeof StripeCo
     const ep = await stripe<{ id: string; secret: string }>(input.secretKey, "POST", "/webhook_endpoints", {
       url: `${base}/api/webhooks/stripe/${conn.id}`,
       enabled_events: STRIPE_EVENTS,
-      description: `LeadGuard workspace ${actor.workspaceId}`,
+      description: `ClientBridge workspace ${actor.workspaceId}`,
     }, `wh-${conn.id}`);
     await recordEvent(sql, { workspaceId: actor.workspaceId, provider: "stripe", direction: "outbound", kind: "webhook_endpoint.create", status: ep.ok ? "ok" : "error", reference: ep.data?.id ?? ep.requestId, error: ep.error });
     if (ep.ok && ep.data) {
