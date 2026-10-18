@@ -1,4 +1,5 @@
 import "server-only";
+import { appOrigin } from "../origin";
 import { sql, type Tx } from "../db";
 import { getConnection, markHealth, recordEvent, secretsOf } from "../integrations/store";
 import { sendTelegram } from "../integrations/telegram";
@@ -39,7 +40,7 @@ export async function processOutbox(limit = 20) {
         await tx`update notifications set status = 'failed', last_error = 'Telegram not configured' where id = ${n.id}`;
         return "failed";
       }
-      const base = process.env.APP_URL ?? "";
+      const base = await appOrigin();
       const text = `${n.title}\n${n.body}${n.link ? `\nOpen: ${base}${n.link}` : ""}`;
       const r = await sendTelegram(token, n.telegram_chat_id, text);
       const attempts = n.attempts + 1;

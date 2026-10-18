@@ -1,4 +1,5 @@
 import "server-only";
+import { appOrigin } from "../origin";
 import { z } from "zod";
 import { sql, type Tx } from "../db";
 import { randomToken, safeEqual } from "../crypto";
@@ -16,7 +17,7 @@ type TgSecrets = { botToken: string; webhookSecret: string };
 export async function connectTelegramBot(actor: Actor, input: z.infer<typeof TelegramConnectInput>) {
   const secret = randomToken(24).replace(/[^A-Za-z0-9_-]/g, "");
   return connectTelegram(actor, input, secret, async (connectionId) => {
-    const base = process.env.APP_URL ?? "";
+    const base = await appOrigin();
     if (!base.startsWith("https://")) return "APP_URL is not public HTTPS, so Telegram cannot deliver messages to this server.";
     const res = await fetch(`https://api.telegram.org/bot${input.botToken}/setWebhook`, {
       method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(10000),

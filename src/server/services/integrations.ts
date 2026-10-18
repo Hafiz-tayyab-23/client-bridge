@@ -1,4 +1,5 @@
 import "server-only";
+import { appOrigin } from "../origin";
 import { z } from "zod";
 import { sql } from "../db";
 import { maskSecret } from "../crypto";
@@ -33,7 +34,7 @@ export async function listIntegrations(actor: Actor) {
   const recentErrors = await sql`
     select provider, kind, error, created_at from integration_events
     where workspace_id = ${actor.workspaceId} and status in ('error','rejected') order by created_at desc limit 20`;
-  const base = process.env.APP_URL ?? "";
+  const base = await appOrigin();
   const providers: Provider[] = ["telegram", "stripe", "google"];
   return providers.map((p) => {
     const conns = rows.filter((r) => r.provider === p);
@@ -81,7 +82,7 @@ export async function connectStripe(actor: Actor, input: z.infer<typeof StripeCo
     secrets: { secretKey: input.secretKey, webhookSecret: input.webhookSecret ?? prevSecrets?.webhookSecret, webhookEndpointId: prevSecrets?.webhookEndpointId },
   });
   let webhookNote = input.webhookSecret ? "Webhook secret saved." : "";
-  const base = process.env.APP_URL ?? "";
+  const base = await appOrigin();
   if (!input.webhookSecret && !prevSecrets?.webhookSecret && base.startsWith("https://")) {
     const ep = await stripe<{ id: string; secret: string }>(input.secretKey, "POST", "/webhook_endpoints", {
       url: `${base}/api/webhooks/stripe/${conn.id}`,

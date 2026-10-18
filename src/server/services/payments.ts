@@ -1,4 +1,5 @@
 import "server-only";
+import { appOrigin } from "../origin";
 import { z } from "zod";
 import { sql, type Tx } from "../db";
 import { badRequest, notFound, AppError } from "../http";
@@ -35,7 +36,7 @@ export async function createPaymentRequest(actor: Actor, opportunityId: string, 
   const [payment] = await sql`
     insert into payments (workspace_id, opportunity_id, contact_id, requested_by, amount_cents, currency, status)
     values (${actor.workspaceId}, ${opp.id}, ${opp.contact_id}, ${actor.id}, ${amountCents}, ${input.currency}, 'pending') returning *`;
-  const base = process.env.APP_URL || "http://localhost:3000";
+  const base = await appOrigin();
   const r = await stripe<{ id: string; url: string; payment_intent: string | null; expires_at: number }>(secrets.secretKey, "POST", "/checkout/sessions", {
     mode: "payment",
     line_items: [{ quantity: 1, price_data: { currency: input.currency, unit_amount: amountCents, product_data: { name: input.description || opp.title } } }],
