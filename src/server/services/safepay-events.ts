@@ -46,7 +46,7 @@ export async function handleSafepayWebhook(connectionId: string, rawBody: string
     await recordEvent(sql, { workspaceId: ws, provider: "safepay", direction: "inbound", kind: "webhook", status: "rejected", error: "No webhook secret configured" });
     throw badRequest("Webhook secret not configured.");
   }
-  const v = verifySafepayWebhook(rawBody, signature, secrets.webhookSecret);
+  const v = verifySafepayWebhook(rawBody, signature, secrets.webhookSecret, [secrets.secretKey, secrets.apiKey]);
   if (!v.ok) {
     await recordEvent(sql, { workspaceId: ws, provider: "safepay", direction: "inbound", kind: "webhook", status: "rejected", error: v.reason });
     throw new AppError(400, "invalid_signature", v.reason ?? "Invalid signature");

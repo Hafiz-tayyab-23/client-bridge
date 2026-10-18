@@ -71,7 +71,7 @@ export function mapTrackerState(state: string | undefined): "paid" | "cancelled"
  * request payload encoded as a JSON string, keyed with the endpoint's shared secret. We check the payload exactly as
  * received and its canonical JSON encoding; nothing else (the v1-era "data only" variant is not accepted).
  */
-export function verifySafepayWebhook(rawBody: string, signature: string | null, secret: string): { ok: boolean; variant?: string; reason?: string } {
+export function verifySafepayWebhook(rawBody: string, signature: string | null, secret: string, altKeys: string[] = []): { ok: boolean; variant?: string; reason?: string } {
   if (!signature) return { ok: false, reason: "Missing X-SFPY-SIGNATURE header" };
   let parsed: unknown;
   try { parsed = JSON.parse(rawBody); } catch { return { ok: false, reason: "Malformed JSON body" }; }
@@ -80,7 +80,19 @@ export function verifySafepayWebhook(rawBody: string, signature: string | null, 
     const expected = createHmac("sha512", secret).update(payload, "utf8").digest("hex");
     if (safeEqual(signature.trim().toLowerCase(), expected)) return { ok: true, variant };
   }
-  return { ok: false, reason: "Signature does not match payload" };
+  // Diagnosis only (never accepted): report which undocumented variant WOULD match, to fix configuration.
+  const diag: string[] = [];
+  const sig = signature.trim();
+  const tryVariant = (label: string, algo: string, keyLabel: string, key: string, payload: string) => {
+    const h = createHmac(algo, key).update(payload, "utf8");
+    const digest = h.digest();
+    if (sig.toLowerCase() === digest.toString("hex") || sig === digest.toString("base64")) diag.push(`${label} with ${keyLabel} (${algo})`);
+  };
+  const p = parsed as { data?: unknown };
+  const payloads: [string, string][] = [["payload", rawBody], ["data object", JSON.stringify(p?.data ?? null)]];
+  const keys: [string, string][] = [["webhook secret", secret], ...altKeys.map((k, i) => [`alt key ${i + 1}`, k] as [string, string])];
+  for (const [pl, body] of payloads) for (const [kl, k] of keys) for (const algo of ["sha512", "sha256"]) tryVariant(pl, algo, kl, k, body);
+  return { ok: false, reason: `Signature does not match payload${diag.length ? ` · diagnosis: signature would match ${diag.join("; ")} (not accepted)` : " · no known variant matches (check the shared secret)"} · header length ${sig.length}` };
 }
 
 /** Finds the first value for any of `keys` anywhere in a nested provider response (shape not fully documented). */
