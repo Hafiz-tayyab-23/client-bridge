@@ -22,7 +22,7 @@ export const LIMITS: Record<Provider, string[]> = {
     "Telegram does not report delivery or read status; messages show as sent or failed.",
     "Webhook authenticity uses Telegram's secret-token header (Telegram does not sign request bodies).",
   ],
-  google: ["Each employee connects their own Google account.", "An app in Google 'testing' status accepts only listed test users and may issue short-lived refresh tokens."],
+  google: ["Each employee connects their own Google account via OAuth; tokens stay on the server.", "While the Google app is in testing status, only listed test users can connect, and refresh tokens can expire after 7 days (shown as Needs reconnect)."],
   twilio: ["Not used: replaced by Telegram with organizer permission."],
 };
 

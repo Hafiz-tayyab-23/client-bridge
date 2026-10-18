@@ -55,7 +55,7 @@ export default function IntegrationsPage() {
                   {x.recentErrors.length > 1 && <ul className="faint" style={{ paddingLeft: 16 }}>{x.recentErrors.slice(1, 4).map((e, i) => <li key={i}>{dateTime(e.created_at)} · {e.kind}: {e.error}</li>)}</ul>}
                   {x.limits.map((l) => <Note key={l}>{l}</Note>)}
                   <div className="row wrap" style={{ marginTop: "auto" }}>
-                    {x.provider === "google" ? <Btn disabled title="Not implemented in this build"><Unplug size={14} />Not available in this build</Btn> : <>
+                    {x.provider === "google" ? <a className="btn" href="/calendar"><CalendarDays size={14} />Per-employee connections on Calendar</a> : <>
                       <Btn variant={x.status === "connected" ? undefined : "pri"} onClick={() => setConnecting(x.provider as "stripe" | "telegram")}><RefreshCw size={14} />{x.status === "not_connected" ? "Connect" : "Reconnect"}</Btn>
                       {x.status !== "not_connected" && <Btn variant="dng" onClick={() => disconnect(x.provider)}><Unplug size={14} />Disconnect</Btn>}
                     </>}

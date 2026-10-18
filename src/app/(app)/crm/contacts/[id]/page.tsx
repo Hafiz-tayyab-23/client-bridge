@@ -14,6 +14,7 @@ import { OppModal } from "@/components/crm/board-tab";
 import { showCustom, type FieldDef, type Opp, type Pipeline } from "@/components/crm/shared";
 import { PaymentRequestModal } from "@/components/payments/request-modal";
 import { PayPill } from "@/components/payments/pay-pill";
+import { BookModal } from "@/components/calendar/book-modal";
 
 interface View {
   contact: { id: string; name: string; email: string | null; phone: string | null; company_id: string | null; tags: string[]; opted_out: boolean; custom: Record<string, unknown>; version: number; created_at: string };
@@ -39,7 +40,7 @@ export default function ContactPage({ params }: { params: Promise<{ id: string }
   const [tab, setTab] = useState("timeline");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  const [modal, setModal] = useState<null | "edit" | "opp" | "pay">(null);
+  const [modal, setModal] = useState<null | "edit" | "opp" | "pay" | "book">(null);
 
   if (v.error) return <><Link className="link back" href="/crm"><ArrowLeft size={14} />Back to CRM</Link><ErrorBox>{v.error.message}</ErrorBox></>;
   if (!v.data) return <Loading label="Loading customer…" />;
@@ -71,7 +72,7 @@ export default function ContactPage({ params }: { params: Promise<{ id: string }
         actions={<>
           <Link className="btn" href={`/conversations?contact=${id}`}><MessageCircle size={16} />Message</Link>
           {can("crm.edit") && <Btn onClick={() => setModal("pay")}><CreditCard size={16} />Request payment</Btn>}
-          <Btn disabled title="Google Calendar integration is not connected in this build"><CalendarPlus size={16} />Book appointment</Btn>
+          {can("crm.edit") && <Btn variant="pri" onClick={() => setModal("book")}><CalendarPlus size={16} />Book appointment</Btn>}
         </>} />
       <div className="grid" style={{ gridTemplateColumns: "320px minmax(0,1fr)", alignItems: "start" }} id="cgrid">
         <div className="grid">
@@ -137,7 +138,7 @@ export default function ContactPage({ params }: { params: Promise<{ id: string }
             )}</div>
           )}
           {tab === "appt" && (
-            <div className="cb">{v.data.appointments.length === 0 ? <><div className="empty">No appointments.</div><Note>Booking requires the Google Calendar integration, which is not connected in this build.</Note></> : (
+            <div className="cb">{v.data.appointments.length === 0 ? <div className="empty">No appointments. Use “Book appointment” above.</div> : (
               <ul className="list">{v.data.appointments.map((a) => <li key={a.id}><div className="grow"><b>{a.title}</b><span>{dateTime(a.starts_at, a.timezone)} · {a.user_name} · {a.status}</span></div></li>)}</ul>
             )}</div>
           )}
@@ -145,6 +146,7 @@ export default function ContactPage({ params }: { params: Promise<{ id: string }
       </div>
       {modal === "edit" && <ContactModal fields={v.data.fields} initial={c} onClose={() => setModal(null)} onDone={() => { setModal(null); v.reload(); }} />}
       {modal === "opp" && pipes.data && <OppModal pipelines={pipes.data.pipelines} pipelineId={pipes.data.pipelines[0].id} fields={oppFields.data?.fields ?? []} opp={null} contactId={id} onClose={() => setModal(null)} onDone={() => { setModal(null); v.reload(); }} />}
+      {modal === "book" && <BookModal contactId={id} onClose={() => { setModal(null); v.reload(); }} />}
       {modal === "pay" && <PaymentRequestModal opportunities={v.data.opportunities} onClose={() => { setModal(null); v.reload(); }} />}
     </>
   );
