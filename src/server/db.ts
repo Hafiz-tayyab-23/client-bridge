@@ -11,7 +11,7 @@ function create(): Sql {
   if (!url) throw new Error("DATABASE_URL is not configured");
   const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
   return postgres(url, {
-    max: process.env.VERCEL ? 3 : 10,
+    max: process.env.VERCEL ? 2 : 10, // keep serverless instances light on the free-tier pooler
     prepare: false, // required by Supabase's transaction pooler (no prepared statements)
     ssl: local ? false : "require",
     idle_timeout: 20,
