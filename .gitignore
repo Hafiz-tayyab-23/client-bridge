@@ -93,3 +93,5 @@ next-env.d.ts
 # Browser test artifacts
 /.e2e-shots/
 /test-results/
+
+/Participant Rubric.pdf
