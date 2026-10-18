@@ -65,3 +65,11 @@ supabase/.temp/
 # Editors / OS
 .vscode/
 .idea/
+
+# Competition planning materials (kept local)
+/docs/
+/CLAUDE.md
+/PLAN.md
+/.claude/
+/Competition_Rules_and_Guidelines.pdf
+/problem statement.pdf
