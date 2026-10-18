@@ -1,0 +1,67 @@
+node_modules/
+.next/
+.vercel/
+.env
+.env.*
+!.env.example
+!.env.*.example
+coverage/
+dist/
+build/
+test-results/
+playwright-report/
+playwright/.cache/
+.DS_Store
+Thumbs.db
+
+# Credentials and keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+credentials*.json
+client_secret*.json
+service-account*.json
+token*.json
+.netrc
+.npmrc
+
+# Claude / MCP local configuration and downloaded skills
+.claude/
+.mcp.json
+mcp.json
+**/mcp*.json
+skills/
+.agents/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Caches
+.cache/
+.turbo/
+.parcel-cache/
+.eslintcache
+.vite/
+*.tsbuildinfo
+__pycache__/
+.pytest_cache/
+
+# Builds and dependencies
+out/
+.output/
+.svelte-kit/
+.venv/
+venv/
+.supabase/
+supabase/.temp/
+
+# Editors / OS
+.vscode/
+.idea/
