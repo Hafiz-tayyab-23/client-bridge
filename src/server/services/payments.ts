@@ -175,7 +175,7 @@ export async function listPayments(actor: Actor, q: { status?: string; page: num
   const where = sql`p.workspace_id = ${actor.workspaceId} ${mine ? sql`and p.requested_by = ${mine}` : sql``} ${q.status ? sql`and p.status = ${q.status}` : sql``}`;
   const [{ total }] = await sql`select count(*)::int as total from payments p where ${where}`;
   const rows = await sql`
-    select p.id, p.provider, p.status, p.amount_cents, p.currency, p.refunded_cents, p.url, p.provider_session, p.provider_intent, p.created_at, p.paid_at,
+    select p.id, p.provider, p.status, p.confirmation_source, p.provider_check_attempts, p.amount_cents, p.currency, p.refunded_cents, p.url, p.provider_session, p.provider_intent, p.created_at, p.paid_at,
            p.opportunity_id, o.title as opportunity_title, p.contact_id, c.name as contact_name, p.requested_by, u.name as requested_by_name
     from payments p left join opportunities o on o.id = p.opportunity_id left join contacts c on c.id = p.contact_id left join users u on u.id = p.requested_by
     where ${where} order by p.created_at desc limit ${q.pageSize} offset ${(q.page - 1) * q.pageSize}`;

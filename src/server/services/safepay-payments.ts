@@ -69,7 +69,7 @@ export async function createSafepayRequest(actor: Actor, opp: Record<string, unk
   const origin = await appOrigin();
   const url = checkoutUrl({ tracker: tracker!, tbt: tbt!.data!, orderId: payment.id, redirectUrl: `${origin}/pay/done?ref=${payment.id}`, cancelUrl: `${origin}/pay/done?ref=${payment.id}&cancelled=1` });
   return sql.begin(async (tx) => {
-    const [p] = await tx`update payments set provider_session = ${tracker ?? null}, url = ${url}, updated_at = now() where id = ${payment.id} returning *`;
+    const [p] = await tx`update payments set provider_session = ${tracker ?? null}, url = ${url}, next_provider_check_at = now() + interval '20 seconds', updated_at = now() where id = ${payment.id} returning *`;
     await activity(tx, actor.workspaceId, actor.id, { contactId: opp.contact_id, opportunityId: opp.id, type: "payment.requested", summary: `Safepay link for ${input.amount.toFixed(2)} ${input.currency.toUpperCase()} created by ${actor.name}` });
     await audit(tx, actor.workspaceId, actor, { event: "payment.requested", targetType: "payment", targetId: p.id, after: { provider: "safepay", amount_cents: amountMinor, currency: input.currency, tracker } });
     if (opp.contact_id) await recordLeadAction(tx, actor, opp.contact_id, "payment request");

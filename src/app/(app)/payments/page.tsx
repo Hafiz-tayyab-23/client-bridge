@@ -11,7 +11,7 @@ import { useToast } from "@/components/ui/toast";
 import { PayPill } from "@/components/payments/pay-pill";
 
 interface Payment {
-  id: string; provider: string; status: string; amount_cents: number | null; currency: string; refunded_cents: number | null; url: string | null;
+  id: string; provider: string; status: string; confirmation_source: string | null; provider_check_attempts: number; amount_cents: number | null; currency: string; refunded_cents: number | null; url: string | null;
   provider_session: string | null; provider_intent: string | null; created_at: string; paid_at: string | null;
   opportunity_id: string | null; opportunity_title: string | null; contact_id: string | null; contact_name: string | null; requested_by_name: string | null; value_masked?: boolean;
 }
@@ -76,6 +76,7 @@ function Payments() {
                   <dt>Opportunity</dt><dd>{p.opportunity_title ?? "—"}</dd><dt>Requested by</dt><dd>{p.requested_by_name ?? "—"}</dd>
                   <dt>Provider</dt><dd>{p.provider === "safepay" ? "Safepay (sandbox)" : "Earlier provider (record kept)"}</dd><dt>{p.provider === "safepay" ? "Safepay tracker" : "Provider reference"}</dt><dd><code>{p.provider_session ?? "—"}</code></dd>
                   
+                  <dt>Confirmed by</dt><dd>{p.confirmation_source ?? (p.status === "pending" ? `Awaiting Safepay (automatic checks: ${p.provider_check_attempts})` : "—")}</dd>
                   <dt>Refunded</dt><dd>{p.refunded_cents ? money(p.refunded_cents, p.currency) : "—"}</dd>
                   <dt>Created</dt><dd>{dateTime(p.created_at)}</dd><dt>Paid</dt><dd>{dateTime(p.paid_at)}</dd>
                 </dl>

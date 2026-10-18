@@ -43,7 +43,16 @@ const parsed = JSON.parse(raw);
 console.log(`sample ${sample.t} | body ${raw.length} bytes | type=${parsed.type} version=${parsed.version} | sig length ${sig?.length} | top-level keys: ${Object.keys(parsed).join(",")}`);
 console.log(`stored webhook secret: length ${s.webhookSecret?.length}, looks ${/^[0-9a-f]+$/i.test(s.webhookSecret) ? "hex" : /^[A-Za-z0-9+/=_-]+$/.test(s.webhookSecret) ? "base64-ish/alnum" : "other"}`);
 const rd = rawData(raw);
-const payloads = { "raw body": raw, "raw data substring": rd, "JSON.stringify(data)": JSON.stringify(parsed.data), "JSON.stringify(payload)": JSON.stringify(parsed) };
+const sortKeys = (o) => Array.isArray(o) ? o.map(sortKeys) : o && typeof o === "object" ? Object.fromEntries(Object.keys(o).sort().map((k) => [k, sortKeys(o[k])])) : o;
+const omit = (o, ks) => Object.fromEntries(Object.entries(o).filter(([k]) => !ks.includes(k)));
+const payloads = {
+  "raw body": raw, "raw data substring": rd, "JSON.stringify(data)": JSON.stringify(parsed.data), "JSON.stringify(payload)": JSON.stringify(parsed),
+  "sorted data": JSON.stringify(sortKeys(parsed.data)), "sorted payload": JSON.stringify(sortKeys(parsed)),
+  "payload w/o endpoint": JSON.stringify(omit(parsed, ["endpoint"])), "payload w/o endpoint,created_at": JSON.stringify(omit(parsed, ["endpoint", "created_at"])),
+  "payload w/o delivery fields": JSON.stringify(omit(parsed, ["endpoint", "delivery_attempts", "next_attempt_at"])),
+  "token": String(parsed.token), "data.tracker": String(parsed.data?.tracker), "token+data": String(parsed.token) + JSON.stringify(parsed.data),
+  "pretty data": JSON.stringify(parsed.data, null, 2), "pretty payload": JSON.stringify(parsed, null, 2),
+};
 const keyForms = {};
 for (const [name, k] of [["webhook secret", s.webhookSecret], ["api secret", s.secretKey], ["public key", s.apiKey]]) {
   if (!k) continue;
@@ -57,5 +66,5 @@ for (const [pn, pv] of Object.entries(payloads)) for (const [kn, kv] of Object.e
   const d = createHmac(algo, kv).update(pv, "utf8").digest();
   if (sig === d.toString("hex") || sig?.toLowerCase() === d.toString("hex") || sig === d.toString("base64")) hits.push(`${algo} over ${pn} keyed with ${kn}`);
 }
-console.log(`raw data substring equals JSON.stringify(data): ${rd === JSON.stringify(parsed.data)}`);
+console.log(`raw data substring equals JSON.stringify(data): ${rd === JSON.stringify(parsed.data)} | data keys: ${Object.keys(parsed.data ?? {}).join(",")} | endpoint field type: ${typeof parsed.endpoint}`);
 console.log(hits.length ? `MATCH: ${hits.join(" | ")}` : "NO MATCH with any stored key — the saved webhook secret is most likely not this endpoint's shared secret.");

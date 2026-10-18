@@ -42,7 +42,7 @@ r = await send(ev(`evt_f_${run}`, "payment.succeeded"));
 check("valid event but Safepay cannot confirm tracker (fake key) → not recorded", (r.data.recorded === false || r.status === 503) && (await st()) === "pending", r);
 r = await send({ token: `evt_g_${run}`, type: "payment.succeeded", data: { tracker: "track_unknown", amount: 1, currency: "PKR" } });
 check("unknown tracker ignored", r.data.matched === false, r);
-const ev2 = await sql`select status, coalesce(error, summary) d from integration_events where workspace_id = ${workspaceId} and provider = 'safepay' order by id`;
+const ev2 = await sql`select status, coalesce(error, summary) d from integration_events where workspace_id = ${workspaceId} and provider = 'safepay' and kind <> 'webhook.rejected_sample' order by id`;
 check("every attempt recorded with reason", ev2.length >= 7 && ev2.filter((e) => e.status === "rejected").length === 2, ev2.map((e) => e.status));
 
 console.log(`\n${pass} passed, ${fail} failed`);

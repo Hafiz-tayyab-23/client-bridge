@@ -16,7 +16,7 @@ type Pay = Record<string, unknown> & { id: string; workspace_id: string; amount_
  * Confirms a tracker with Safepay's reporter API (authenticated with the secret key) and checks that the
  * provider's tracker, amount and currency match our payment exactly. Nothing is recorded unless this passes.
  */
-async function confirmWithProvider(secretKey: string, pay: Pay) {
+export async function confirmWithProvider(secretKey: string, pay: Pay) {
   const r = await fetchTracker(secretKey, pay.provider_session);
   if (!r.ok) return { ok: false, temporary: !r.permanent, reason: r.error ?? "Safepay status check failed", state: undefined as string | undefined, shape: "" };
   // Field paths observed on the live sandbox reporter API (GET /reporter/api/v1/payments/{tracker}).
@@ -103,6 +103,7 @@ export async function handleSafepayWebhook(connectionId: string, rawBody: string
     if (!(await firstReceipt(tx, "safepay", `${ws}:${eventId}`))) return { duplicate: true };
     const [row] = await tx`select * from payments where id = ${pay.id} for update`;
     const changed = target ? await applyStatus(tx, row as never, target, { refunded }) : false;
+    if (changed) await tx`update payments set confirmation_source = ${"Verified Safepay webhook (signature valid) + provider check"}, next_provider_check_at = null where id = ${pay.id}`;
     await recordEvent(tx, { workspaceId: ws, provider: "safepay", direction: "inbound", kind: ev.type ?? "event", status: rejected ? "error" : "ok", reference: eventId,
       summary: `${changed ? "Payment updated" : "No change"} · signature: ${v.variant}${note ? ` · ${note}` : ""}`, error: rejected ? note : null });
     await markHealth(tx, conn.id, true);
@@ -130,7 +131,9 @@ export async function syncSafepayPayment(actor: Actor, paymentId: string) {
   if (!mapped || mapped === "partially_refunded") return { state: c.state ?? "unknown", changed: false, note: mapped ? "Partial refund amount not available from status check; use the refund webhook." : "Unmapped Safepay state; status left unchanged." };
   const changed = await sql.begin(async (tx) => {
     const [row] = await tx`select * from payments where id = ${paymentId} for update`;
-    return applyStatus(tx, row as never, mapped as Status, mapped === "refunded" ? { refunded: Number(row.amount_cents) } : {});
+    const ch = await applyStatus(tx, row as never, mapped as Status, mapped === "refunded" ? { refunded: Number(row.amount_cents) } : {});
+    if (ch) await tx`update payments set confirmation_source = ${"Authenticated Safepay status check (manual)"}, next_provider_check_at = null where id = ${paymentId}`;
+    return ch;
   });
   if (changed) await activity(sql, actor.workspaceId, actor.id, { contactId: p.contact_id, opportunityId: p.opportunity_id, type: "payment.synced", summary: `Safepay status checked by ${actor.name}: ${c.state}` });
   return { state: c.state, changed };

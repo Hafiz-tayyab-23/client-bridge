@@ -2,6 +2,7 @@ import "server-only";
 import { sql } from "./db";
 import { escalateDue } from "./services/leads";
 import { processOutbox } from "./services/notifications";
+import { pollSafepayPayments } from "./services/safepay-poll";
 
 /**
  * One worker pass: escalate expired leads, then deliver queued external alerts.
@@ -17,7 +18,8 @@ export async function runTick(minIntervalSeconds = 2) {
   if (lease.length === 0) return { skipped: true };
   const escalation = await escalateDue();
   const outbox = await processOutbox();
-  const result = { at: new Date().toISOString(), escalation, outbox };
+  const payments = await pollSafepayPayments().catch((e) => ({ error: (e as Error).message }));
+  const result = { at: new Date().toISOString(), escalation, outbox, payments };
   await sql`update worker_state set last_result = ${sql.json(result as never)} where id = 1`;
   return result;
 }
