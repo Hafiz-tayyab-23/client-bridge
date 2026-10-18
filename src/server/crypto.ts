@@ -16,7 +16,7 @@ export function safeEqual(a: string, b: string): boolean {
 }
 
 function key(): Buffer {
-  const raw = process.env.APP_ENCRYPTION_KEY;
+  const raw = process.env.APP_ENCRYPTION_KEY?.trim().replace(/^["']|["']$/g, "");
   if (!raw) throw new Error("APP_ENCRYPTION_KEY is not configured");
   const k = Buffer.from(raw, "base64");
   if (k.length !== 32) throw new Error("APP_ENCRYPTION_KEY must be 32 bytes (base64)");

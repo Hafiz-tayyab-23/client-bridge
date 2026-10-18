@@ -363,15 +363,39 @@ export async function changeAvailability(actor: Actor, userId: string, availabil
 }
 
 // ───────── Queries ─────────
+/** Accountable owners always see their own leads; crm.view + crm.view_all widens to the whole workspace. */
 function visibility(actor: Actor) {
-  requirePerm(actor, "crm.view");
-  return can(actor, "crm.view_all") ? null : actor.id;
+  return can(actor, "crm.view") && can(actor, "crm.view_all") ? null : actor.id;
 }
 
+// One definition of each lead state, shared by lists, counts, the recovery queue and the dashboard (Q12).
+// Recovery item (glossary): unacknowledged beyond its window, escalated 2+ times, or idle beyond the configured period.
+function stateSql(idleSeconds: number) {
+  const open = sql`l.status in ('assigned','acknowledged')`;
+  const overdue = sql`(l.status = 'assigned' and (l.chain_exhausted or l.ack_deadline < now()))`;
+  const idle = sql`(l.last_action_at < now() - make_interval(secs => ${idleSeconds}))`;
+  return {
+    unack: sql`(l.status = 'assigned' and not l.chain_exhausted and l.ack_deadline >= now())`,
+    ack: sql`l.status = 'acknowledged'`,
+    overdue,
+    escalated: sql`(${open} and l.escalation_count > 0)`,
+    recovery: sql`(${open} and (${overdue} or l.escalation_count >= 2 or ${idle}))`,
+    open,
+    closed: sql`l.status = 'closed'`,
+    reasons: sql`case when ${open} then array_remove(array[
+        case when ${overdue} then 'Unacknowledged beyond its window' end,
+        case when l.escalation_count >= 2 then 'Escalated ' || l.escalation_count || ' times' end,
+        case when ${idle} then 'No recorded action for over ' || ${Math.max(1, Math.round(idleSeconds / 60))} || ' min' end
+      ], null) else '{}'::text[] end`,
+  };
+}
+export const LEAD_STATES = ["all", "unack", "ack", "overdue", "escalated", "recovery", "open", "closed"] as const;
+
 export const LeadListQuery = z.object({
-  status: z.enum(["new", "assigned", "acknowledged", "closed", "open"]).optional(),
+  state: z.enum(LEAD_STATES).default("all"),
   source: z.enum(["web_form", "message", "manual"]).optional(),
   ownerId: z.string().uuid().optional(),
+  q: z.string().trim().max(100).optional(),
   createdFrom: z.string().datetime({ offset: true }).optional(),
   page: z.coerce.number().int().min(1).max(10000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
@@ -379,53 +403,64 @@ export const LeadListQuery = z.object({
 
 export async function listLeads(actor: Actor, q: z.infer<typeof LeadListQuery>) {
   const mine = visibility(actor);
+  const rules = await getRules(sql, actor.workspaceId);
+  const st = stateSql(rules.idle_seconds);
   const where = sql`
     l.workspace_id = ${actor.workspaceId}
     ${mine ? sql`and l.owner_id = ${mine}` : sql``}
-    ${q.status === "open" ? sql`and l.status in ('assigned','acknowledged')` : q.status ? sql`and l.status = ${q.status}` : sql``}
+    ${q.state !== "all" ? sql`and ${st[q.state]}` : sql``}
     ${q.source ? sql`and l.source = ${q.source}` : sql``}
     ${q.ownerId ? sql`and l.owner_id = ${q.ownerId}` : sql``}
-    ${q.createdFrom ? sql`and l.created_at >= ${q.createdFrom}` : sql``}`;
-  const [{ total }] = await sql`select count(*)::int as total from leads l where ${where}`;
+    ${q.createdFrom ? sql`and l.created_at >= ${q.createdFrom}` : sql``}
+    ${q.q ? sql`and (l.title ilike ${"%" + q.q + "%"} or c.name ilike ${"%" + q.q + "%"} or c.email ilike ${"%" + q.q + "%"} or c.phone ilike ${"%" + q.q + "%"} or co.name ilike ${"%" + q.q + "%"})` : sql``}`;
+  const from = sql`leads l left join users u on u.id = l.owner_id left join contacts c on c.id = l.contact_id left join companies co on co.id = c.company_id`;
+  const [{ total }] = await sql`select count(*)::int as total from ${from} where ${where}`;
   const rows = await sql`
     select l.id, l.title, l.source, l.source_detail, l.status, l.owner_id, u.name as owner_name, l.contact_id, c.name as contact_name,
-           l.assigned_at, l.ack_deadline, l.acknowledged_at, l.escalation_level, l.escalation_count, l.chain_exhausted, l.created_at
-    from leads l left join users u on u.id = l.owner_id left join contacts c on c.id = l.contact_id
-    where ${where} order by l.created_at desc limit ${q.pageSize} offset ${(q.page - 1) * q.pageSize}`;
+           c.email as contact_email, c.phone as contact_phone, co.name as company_name,
+           l.assigned_at, l.ack_deadline, l.acknowledged_at, l.escalation_level, l.escalation_count, l.chain_exhausted, l.created_at,
+           ${st.reasons} as recovery_reasons
+    from ${from} where ${where} order by l.created_at desc limit ${q.pageSize} offset ${(q.page - 1) * q.pageSize}`;
   return { total, page: q.page, pageSize: q.pageSize, leads: rows, serverTime: new Date().toISOString() };
+}
+
+/** Counts per state with the same definitions as the list filters. */
+export async function leadSummary(actor: Actor) {
+  const mine = visibility(actor);
+  const rules = await getRules(sql, actor.workspaceId);
+  const st = stateSql(rules.idle_seconds);
+  const [r] = await sql`
+    select count(*)::int as all,
+      count(*) filter (where ${st.unack})::int as unack, count(*) filter (where ${st.ack})::int as ack,
+      count(*) filter (where ${st.overdue})::int as overdue, count(*) filter (where ${st.escalated})::int as escalated,
+      count(*) filter (where ${st.recovery})::int as recovery, count(*) filter (where ${st.open})::int as open
+    from leads l where l.workspace_id = ${actor.workspaceId} ${mine ? sql`and l.owner_id = ${mine}` : sql``}`;
+  return r;
 }
 
 export async function getLead(actor: Actor, leadId: string) {
   const mine = visibility(actor);
+  const rules = await getRules(sql, actor.workspaceId);
+  const st = stateSql(rules.idle_seconds);
   const [lead] = await sql`
-    select l.*, u.name as owner_name, c.name as contact_name, c.phone as contact_phone, c.email as contact_email
-    from leads l left join users u on u.id = l.owner_id left join contacts c on c.id = l.contact_id
+    select l.*, u.name as owner_name, c.name as contact_name, c.phone as contact_phone, c.email as contact_email, co.name as company_name,
+           ${st.reasons} as recovery_reasons
+    from leads l left join users u on u.id = l.owner_id left join contacts c on c.id = l.contact_id left join companies co on co.id = c.company_id
     where l.id = ${leadId} and l.workspace_id = ${actor.workspaceId} ${mine ? sql`and l.owner_id = ${mine}` : sql``}`;
   if (!lead) throw notFound("Lead not found.");
-  const [assignments, activities] = await Promise.all([
+  const [assignments, activities, names] = await Promise.all([
     sql`select a.*, u.name as user_name from lead_assignments a left join users u on u.id = a.user_id where a.lead_id = ${leadId} order by a.assigned_at`,
     sql`select a.id, a.type, a.summary, a.created_at, coalesce(u.name, 'System') as actor from activities a left join users u on u.id = a.actor_id where a.lead_id = ${leadId} order by a.created_at desc limit 200`,
+    sql`select (select name from users where id = ${rules.backup_user_id}) as backup, (select name from users where id = ${rules.manager_user_id}) as manager`,
   ]);
-  const rules = await getRules(sql, actor.workspaceId);
-  return { lead, assignments, activities, absencePolicy: rules.absence_policy, serverTime: new Date().toISOString() };
+  return {
+    lead, assignments, activities, serverTime: new Date().toISOString(),
+    absencePolicy: rules.absence_policy,
+    chain: { ackWindowSeconds: rules.ack_window_seconds, levels: rules.levels, backupName: names[0].backup, managerName: names[0].manager },
+  };
 }
 
-/** F3.7: unacknowledged beyond window, escalated 2+ times, or idle beyond the configured period. */
 export async function recoveryQueue(actor: Actor) {
-  const mine = visibility(actor);
-  const rules = await getRules(sql, actor.workspaceId);
-  return sql`
-    select l.id, l.title, l.source, l.status, l.owner_id, u.name as owner_name, l.escalation_count, l.ack_deadline, l.last_action_at, l.created_at,
-      array_remove(array[
-        case when l.status = 'assigned' and (l.chain_exhausted or l.ack_deadline < now()) then 'Unacknowledged beyond its window' end,
-        case when l.escalation_count >= 2 then 'Escalated ' || l.escalation_count || ' times' end,
-        case when l.last_action_at < now() - make_interval(secs => ${rules.idle_seconds}) then 'No recorded action for over ' || ${Math.round(rules.idle_seconds / 60)} || ' min' end
-      ], null) as reasons
-    from leads l left join users u on u.id = l.owner_id
-    where l.workspace_id = ${actor.workspaceId} and l.status in ('assigned','acknowledged')
-      ${mine ? sql`and l.owner_id = ${mine}` : sql``}
-      and ((l.status = 'assigned' and (l.chain_exhausted or l.ack_deadline < now()))
-           or l.escalation_count >= 2
-           or l.last_action_at < now() - make_interval(secs => ${rules.idle_seconds}))
-    order by l.created_at limit 200`;
+  const r = await listLeads(actor, { state: "recovery", page: 1, pageSize: 100 });
+  return r.leads.map((l) => ({ ...l, reasons: l.recovery_reasons }));
 }

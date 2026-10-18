@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { currentActor } from "@/server/auth/session";
 import { sql } from "@/server/db";
 import { me } from "@/server/services/accounts";
-import { AppShell } from "@/components/temp/app-shell";
+import { AppShell } from "@/components/shell/app-shell";
 
 // Server-side guard: every page in this group requires a valid session.
 export default async function AppLayout({ children }: { children: React.ReactNode }) {

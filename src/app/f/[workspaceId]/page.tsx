@@ -1,8 +1,9 @@
 "use client";
-// Public web form (F3.1). TEMPORARY styling.
+// Public web form (F3.1). Customer-facing; no session.
 import { use, useState } from "react";
+import { CircleCheck, Layers, Send } from "lucide-react";
 import { api, fieldErrors } from "@/lib/api";
-import { Button, Field, Notice } from "@/components/temp/ui";
+import { Btn, ErrorBox, Field } from "@/components/ui/primitives";
 
 export default function PublicForm({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = use(params);
@@ -23,19 +24,28 @@ export default function PublicForm({ params }: { params: Promise<{ workspaceId: 
   }
 
   return (
-    <main className="mx-auto w-full max-w-md px-4 py-10">
-      <h1 className="mb-4 text-2xl font-semibold">Contact us</h1>
-      {done ? <Notice kind="success">Thanks! We received your request (ref {done}). Someone will reply shortly.</Notice> : (
-        <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
-          {error && <Notice kind="error">{error}</Notice>}
-          <Field id="name" name="name" label="Your name" required error={errs.name} />
-          <Field id="email" name="email" type="email" label="Email" error={errs.email} />
-          <Field id="phone" name="phone" label="Phone (+923001234567)" error={errs.phone} />
-          <Field id="message" name="message" label="How can we help?" error={errs.message} />
-          <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" />
-          <Button busy={busy} type="submit">Send</Button>
-        </form>
-      )}
+    <main className="auth" id="main">
+      <div style={{ width: "100%", maxWidth: 440 }}>
+        <div className="brand"><span className="logo"><Layers size={18} /></span><div><b>Contact us</b><small>We reply within minutes during business hours</small></div></div>
+        <section className="card"><div className="cb" style={{ padding: 24 }}>
+          {done ? (
+            <div role="status" className="row" style={{ alignItems: "flex-start" }}><span className="ico green"><CircleCheck size={16} /></span>
+              <div><b>Thanks — we received your request.</b><p className="muted">Reference {done}. A team member has been assigned and will contact you shortly.</p></div></div>
+          ) : (
+            <form onSubmit={submit} noValidate>
+              <h1>How can we help?</h1>
+              <p className="muted" style={{ marginBottom: 16 }}>Leave your details and the right person will get back to you.</p>
+              {error && <div style={{ marginBottom: 12 }}><ErrorBox>{error}</ErrorBox></div>}
+              <Field id="name" name="name" label="Your name *" required autoComplete="name" error={errs.name} />
+              <Field id="email" name="email" type="email" label="Email" autoComplete="email" error={errs.email} />
+              <Field id="phone" name="phone" label="Phone" placeholder="+923001234567" inputMode="tel" autoComplete="tel" error={errs.phone} />
+              <Field id="message" name="message" label="Message" error={errs.message} />
+              <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" hidden />
+              <Btn variant="pri" busy={busy} type="submit" style={{ width: "100%", justifyContent: "center" }}><Send size={16} />Send request</Btn>
+            </form>
+          )}
+        </div></section>
+      </div>
     </main>
   );
 }

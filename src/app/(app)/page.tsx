@@ -1,18 +1,19 @@
 "use client";
-import { useMe } from "@/components/temp/app-shell";
+import Link from "next/link";
+import { LayoutDashboard } from "lucide-react";
+import { useMe } from "@/components/shell/app-shell";
+import { Note, PageHead } from "@/components/ui/primitives";
 
-export default function Home() {
+// Placeholder until the dashboard endpoint lands (F5). No figures are shown rather than fake ones.
+export default function Dashboard() {
   const me = useMe();
   return (
-    <section className="flex flex-col gap-3">
-      <h1 className="text-2xl font-semibold">Welcome, {me.user.name}</h1>
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt>Workspace</dt><dd>{me.workspace.name} <code className="text-xs">{me.workspace.id}</code></dd>
-        <dt>Level</dt><dd>{me.user.baseRole}</dd>
-        <dt>Permissions</dt><dd>{me.user.permissions.join(", ") || "none"}</dd>
-        <dt>Public lead form</dt><dd><a className="underline" href={`/f/${me.workspace.id}`}>/f/{me.workspace.id}</a></dd>
-      </dl>
-      <p className="text-sm">Dashboard figures arrive with the approved design (F5).</p>
-    </section>
+    <>
+      <PageHead title="Operational Dashboard" sub={`Welcome, ${me.user.name}.`} />
+      <section className="card"><div className="cb">
+        <div className="row"><span className="ico"><LayoutDashboard size={16} /></span><b>Live metrics are being connected.</b></div>
+        <div style={{ marginTop: 12 }}><Note>Meanwhile, open <Link className="link" href="/leads">Leads</Link> or the <Link className="link" href="/leads?state=recovery">recovery queue</Link>.</Note></div>
+      </div></section>
+    </>
   );
 }

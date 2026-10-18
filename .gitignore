@@ -81,3 +81,15 @@ next-env.d.ts
 
 # Local dev database
 .devdb/
+
+# Received UI prototype (local reference only)
+/UI/
+/app.js
+/data.js
+/index.html
+/styles.css
+/FRONTEND_API_CONTRACT.md
+
+# Browser test artifacts
+/.e2e-shots/
+/test-results/

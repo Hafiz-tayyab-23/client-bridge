@@ -1,10 +1,15 @@
-import { TempBanner } from "@/components/temp/ui";
+import { Layers } from "lucide-react";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <>
-      <TempBanner />
-      <main className="mx-auto w-full max-w-md flex-1 px-4 py-10">{children}</main>
-    </>
+    <main className="auth" id="main">
+      <div style={{ width: "100%", maxWidth: 420 }}>
+        <div className="brand">
+          <span className="logo"><Layers size={18} /></span>
+          <div><b>LeadGuard</b><small>Every lead has one accountable owner</small></div>
+        </div>
+        <section className="card"><div className="cb" style={{ padding: 24 }}>{children}</div></section>
+      </div>
+    </main>
   );
 }

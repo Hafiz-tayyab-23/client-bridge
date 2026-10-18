@@ -5,8 +5,9 @@ import { runTick } from "@/server/worker";
 
 // Called by Supabase pg_cron every few seconds: Authorization: Bearer <WORKER_SECRET>.
 async function handle(req: NextRequest) {
-  const secret = process.env.WORKER_SECRET;
-  const given = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  // Tolerate quotes/whitespace pasted into hosting env settings.
+  const secret = (process.env.WORKER_SECRET ?? "").trim().replace(/^["']|["']$/g, "");
+  const given = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!secret || !safeEqual(given, secret)) throw unauthorized("Invalid worker secret.");
   return json(await runTick(1));
 }

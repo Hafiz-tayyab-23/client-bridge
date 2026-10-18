@@ -24,8 +24,16 @@ export async function listUsers(actor: Actor) {
   return sql`
     select u.id, u.name, u.email, u.base_role, u.role_id, r.name as role_name, u.availability, u.active,
            u.telegram_chat_id is not null as telegram_connected, u.created_at,
-           (select count(*)::int from leads l where l.owner_id = u.id and l.status in ('assigned','acknowledged')) as open_leads
+           x.open_leads, ar.max_open_leads,
+           (u.active and u.availability = 'available' and x.open_leads < ar.max_open_leads) as eligible,
+           case when not u.active then 'Deactivated'
+                when u.availability <> 'available' then 'Not Available (' || replace(u.availability, '_', ' ') || ')'
+                when x.open_leads >= ar.max_open_leads then 'At open-lead limit (' || ar.max_open_leads || ')'
+                else 'Eligible for round-robin' end as eligibility_reason,
+           exists (select 1 from integration_connections ic where ic.user_id = u.id and ic.provider = 'google' and ic.status = 'connected') as calendar_connected
     from users u left join roles r on r.id = u.role_id
+    join assignment_rules ar on ar.workspace_id = u.workspace_id
+    cross join lateral (select count(*)::int as open_leads from leads l where l.owner_id = u.id and l.status in ('assigned','acknowledged')) x
     where u.workspace_id = ${actor.workspaceId}
     order by (u.base_role = 'owner') desc, u.name`;
 }

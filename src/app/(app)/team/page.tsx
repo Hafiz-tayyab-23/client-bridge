@@ -1,178 +1,186 @@
 "use client";
-// TEMPORARY Team screen: users, levels/roles, permissions editor (Owner), invitations.
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { Ban, CalendarCheck, CalendarX, Check, Info, Minus, Search, Shield, ShieldCheck, UserPlus } from "lucide-react";
+import { AvailPill } from "@/components/team/avail-pill";
 import { api, fieldErrors } from "@/lib/api";
-import { useMe } from "@/components/temp/app-shell";
-import { Button, Field, Notice, Select } from "@/components/temp/ui";
+import { refreshAll, useApi } from "@/lib/hooks";
+import { useCan, useMe } from "@/components/shell/app-shell";
+import { Btn, ErrorBox, Field, Loading, Modal, Note, PageHead, Pill, SelectField, Who } from "@/components/ui/primitives";
+import { useToast } from "@/components/ui/toast";
 
-interface User { id: string; name: string; email: string; base_role: string; role_id: string | null; role_name: string | null; availability: string; active: boolean; open_leads: number; telegram_connected: boolean }
+interface User {
+  id: string; name: string; email: string; base_role: "owner" | "admin" | "user"; role_id: string | null; role_name: string | null;
+  availability: string; active: boolean; open_leads: number; max_open_leads: number; eligible: boolean; eligibility_reason: string;
+  telegram_connected: boolean; calendar_connected: boolean;
+}
 interface Role { id: string; name: string; permissions: string[]; members: number }
 interface Perm { key: string; label: string }
 
 export default function TeamPage() {
   const me = useMe();
-  const perms = new Set(me.user.permissions);
-  const [users, setUsers] = useState<User[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [catalog, setCatalog] = useState<Perm[]>([]);
-  const [msg, setMsg] = useState<{ kind: "error" | "success"; text: string } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
-  const [errs, setErrs] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
+  const can = useCan();
+  const toast = useToast();
+  const users = useApi<{ users: User[] }>("/api/team/users", { pollMs: 8000 });
+  const roles = useApi<{ roles: Role[]; permissions: Perm[] }>("/api/team/roles");
+  const [q, setQ] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const isOwner = me.user.baseRole === "owner";
 
-  const load = useCallback(async () => {
-    try {
-      const [u, r] = await Promise.all([api<{ users: User[] }>("/api/team/users"), api<{ roles: Role[]; permissions: Perm[] }>("/api/team/roles")]);
-      setUsers(u.users); setRoles(r.roles); setCatalog(r.permissions);
-    } catch (e) { setMsg({ kind: "error", text: (e as Error).message }); }
-    finally { setLoading(false); }
-  }, []);
-  useEffect(() => { load(); }, [load]);
-
-  async function act(fn: () => Promise<unknown>, ok: string) {
-    setMsg(null);
-    try { await fn(); setMsg({ kind: "success", text: ok }); await load(); }
-    catch (e) { setMsg({ kind: "error", text: (e as Error).message }); }
+  async function patch(id: string, body: Record<string, unknown>, ok: string) {
+    try { await api(`/api/team/users/${id}`, { method: "PATCH", body }); toast(ok); users.reload(); roles.reload(); }
+    catch (e) { toast((e as Error).message, "error"); }
   }
-
-  async function sendInvite(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const f = new FormData(form);
-    setBusy(true); setErrs({}); setMsg(null); setInviteUrl(null);
+  async function setAvail(id: string, availability: string) {
     try {
-      const r = await api<{ inviteUrl: string }>("/api/team/invitations", {
-        body: { email: f.get("email"), name: f.get("name"), baseRole: f.get("baseRole"), roleId: f.get("roleId") || null },
-      });
-      setInviteUrl(r.inviteUrl); form.reset();
-      setMsg({ kind: "success", text: "Invitation created. Share the link below with the new user." });
-    } catch (err) { setMsg({ kind: "error", text: (err as Error).message }); setErrs(fieldErrors(err)); }
-    finally { setBusy(false); }
+      const r = await api<{ reassigned: number }>(`/api/team/users/${id}/availability`, { method: "PUT", body: { availability } });
+      toast(r.reassigned ? `Status updated · ${r.reassigned} unacknowledged lead(s) reassigned` : "Status updated"); refreshAll();
+    } catch (e) { toast((e as Error).message, "error"); }
   }
-
-  function togglePerm(role: Role, key: string) {
+  async function togglePerm(role: Role, key: string) {
     const next = role.permissions.includes(key) ? role.permissions.filter((p) => p !== key) : [...role.permissions, key];
-    act(() => api(`/api/team/roles/${role.id}`, { method: "PUT", body: { name: role.name, permissions: next } }), `Updated ${role.name}.`);
+    try { await api(`/api/team/roles/${role.id}`, { method: "PUT", body: { name: role.name, permissions: next } }); toast(`${role.name}: permission ${role.permissions.includes(key) ? "removed" : "granted"}`); roles.reload(); }
+    catch (e) { toast((e as Error).message, "error"); }
   }
 
-  if (loading) return <p role="status">Loading team…</p>;
+  const list = users.data?.users.filter((u) => !q || `${u.name} ${u.email}`.toLowerCase().includes(q.toLowerCase())) ?? [];
+  const count = (s: string) => users.data?.users.filter((u) => u.availability === s).length ?? 0;
+
   return (
-    <div className="flex flex-col gap-8">
-      <h1 className="text-2xl font-semibold">Team</h1>
-      {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
-
-      <section aria-labelledby="users-h" className="overflow-x-auto">
-        <h2 id="users-h" className="mb-2 text-lg font-semibold">Users</h2>
-        <table className="w-full min-w-[640px] border-collapse text-sm">
-          <thead><tr className="border-b text-left"><th className="py-1">Name</th><th>Level</th><th>Role</th><th>Status</th><th>Open leads</th><th>Telegram</th></tr></thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-b">
-                <td className="py-1">{u.name}<br /><span className="text-xs">{u.email}</span></td>
-                <td>
-                  {u.base_role === "owner" || !perms.has("users.manage") ? u.base_role : (
-                    <select aria-label={`Level for ${u.name}`} value={u.base_role} className="rounded border px-1"
-                      onChange={(e) => act(() => api(`/api/team/users/${u.id}`, { method: "PATCH", body: { baseRole: e.target.value } }), "Level updated.")}>
-                      <option value="admin">admin</option><option value="user">user</option>
-                    </select>
-                  )}
-                </td>
-                <td>
-                  {u.base_role === "owner" ? "All permissions" : !perms.has("users.manage") ? u.role_name ?? "—" : (
-                    <select aria-label={`Role for ${u.name}`} value={u.role_id ?? ""} className="rounded border px-1"
-                      onChange={(e) => act(() => api(`/api/team/users/${u.id}`, { method: "PATCH", body: { roleId: e.target.value || null } }), "Role updated.")}>
-                      <option value="">No role (no permissions)</option>
-                      {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                    </select>
-                  )}
-                </td>
-                <td>
-                  {perms.has("leads.assign") && u.id !== me.user.id ? (
-                    <select aria-label={`Status for ${u.name}`} value={u.availability} className="rounded border px-1"
-                      onChange={(e) => act(() => api(`/api/team/users/${u.id}/availability`, { method: "PUT", body: { availability: e.target.value } }), "Status updated.")}>
-                      <option value="available">Available</option><option value="busy">Busy</option><option value="on_leave">On leave</option><option value="offline">Offline</option>
-                    </select>
-                  ) : u.availability.replace("_", " ")}
-                </td>
-                <td>{u.open_leads}</td>
-                <td>{u.telegram_connected ? "✓ set" : "not set"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <>
+      <PageHead title="Team" sub="Employees, permissions and availability that drive lead assignment."
+        actions={can("users.manage") && <Btn variant="pri" onClick={() => setInviting(true)}><UserPlus size={16} />Invite employee</Btn>} />
+      <section className="card">
+        <div className="fbar">
+          <div className="search"><Search size={16} /><label className="sr" htmlFor="tq">Search team</label><input id="tq" placeholder="Search employees" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          {["available", "busy", "on_leave", "offline"].map((s) => <span key={s} className="row" style={{ gap: 4 }}><AvailPill v={s} /><span className="faint">{count(s)}</span></span>)}
+        </div>
+        {users.error && <div className="cb"><ErrorBox>{users.error.message}</ErrorBox></div>}
+        {!users.data ? <Loading /> : (
+          <div className="tw"><table className="stk">
+            <thead><tr><th scope="col">Employee</th><th scope="col">Level</th><th scope="col">Role</th><th scope="col">Availability</th><th scope="col">Open leads</th><th scope="col">Assignment eligibility</th><th scope="col">Calendar</th><th scope="col">Escalation alerts</th></tr></thead>
+            <tbody>
+              {list.map((u) => {
+                const editable = can("users.manage") && u.base_role !== "owner" && (isOwner || u.base_role !== "admin");
+                return (
+                  <tr key={u.id}>
+                    <td data-l="Employee"><Who name={u.name} sub={u.email} /></td>
+                    <td data-l="Level">{editable && isOwner ? (
+                      <select aria-label={`Level for ${u.name}`} className="sel-c" value={u.base_role} onChange={(e) => patch(u.id, { baseRole: e.target.value }, "Level updated")}>
+                        <option value="admin">Admin</option><option value="user">User</option></select>
+                    ) : <Pill tone={u.base_role === "owner" ? "blue" : "gray"}>{u.base_role}</Pill>}</td>
+                    <td data-l="Role">{u.base_role === "owner" ? <Pill tone="purple" icon={<Shield size={12} />}>All permissions</Pill> : editable ? (
+                      <select aria-label={`Role for ${u.name}`} className="sel-c" value={u.role_id ?? ""} onChange={(e) => patch(u.id, { roleId: e.target.value || null }, "Role updated")}>
+                        <option value="">No role (no permissions)</option>{roles.data?.roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
+                    ) : u.role_name ?? "—"}</td>
+                    <td data-l="Availability">{(u.id === me.user.id || can("leads.assign")) ? (
+                      <select aria-label={`Availability for ${u.name}`} className="sel-c" value={u.availability} onChange={(e) => setAvail(u.id, e.target.value)}>
+                        <option value="available">Available</option><option value="busy">Busy</option><option value="on_leave">On leave</option><option value="offline">Offline</option></select>
+                    ) : <AvailPill v={u.availability} />}</td>
+                    <td data-l="Open leads"><b className="num">{u.open_leads}</b> <span className="faint">/ {u.max_open_leads}</span></td>
+                    <td data-l="Eligibility">{u.eligible ? <Pill tone="green" icon={<Check size={12} />}>Eligible</Pill> : <Pill tone="gray" icon={<Ban size={12} />}>{u.eligibility_reason}</Pill>}</td>
+                    <td data-l="Calendar">{u.calendar_connected ? <Pill tone="green" icon={<CalendarCheck size={12} />}>Connected</Pill> : <Pill tone="amber" icon={<CalendarX size={12} />}>Not connected</Pill>}</td>
+                    <td data-l="Alerts">{u.telegram_connected ? <Pill tone="green">Telegram set</Pill> : <span className="faint">Not set</span>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table></div>
+        )}
       </section>
 
-      <TelegramSelf />
+      <AlertDestination />
 
-      {perms.has("users.manage") && (
-        <section aria-labelledby="inv-h" className="max-w-md">
-          <h2 id="inv-h" className="mb-2 text-lg font-semibold">Invite a user</h2>
-          <form onSubmit={sendInvite} className="flex flex-col gap-3" noValidate>
-            <Field id="inv-name" name="name" label="Name" required error={errs.name} />
-            <Field id="inv-email" name="email" type="email" label="Email" required error={errs.email} />
-            <Select id="inv-level" name="baseRole" label="Level" defaultValue="user">
-              <option value="user">User</option>
-              {me.user.baseRole === "owner" && <option value="admin">Admin</option>}
-            </Select>
-            <Select id="inv-role" name="roleId" label="Role (permission set)" defaultValue={roles.find((r) => r.name === "Sales")?.id ?? ""}>
-              <option value="">No role</option>
-              {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </Select>
-            <Button busy={busy} type="submit">Create invitation</Button>
-          </form>
-          {inviteUrl && (
-            <p className="mt-2 break-all text-sm">Invite link (open in a private window to accept): <a className="underline" href={inviteUrl}>{inviteUrl}</a></p>
-          )}
-        </section>
-      )}
-
-      <section aria-labelledby="roles-h" className="overflow-x-auto">
-        <h2 id="roles-h" className="mb-1 text-lg font-semibold">Roles and permissions</h2>
-        <p className="mb-2 text-sm">{me.user.baseRole === "owner" ? "As Owner you can grant or remove each permission." : "Only the Owner can change role permissions."}</p>
-        <table className="w-full min-w-[640px] border-collapse text-sm">
-          <thead><tr className="border-b text-left"><th className="py-1">Permission</th>{roles.map((r) => <th key={r.id}>{r.name} ({r.members})</th>)}</tr></thead>
-          <tbody>
-            {catalog.map((p) => (
-              <tr key={p.key} className="border-b">
-                <td className="py-1">{p.label}<br /><code className="text-xs">{p.key}</code></td>
-                {roles.map((r) => (
-                  <td key={r.id}>
-                    <input type="checkbox" aria-label={`${r.name}: ${p.label}`} checked={r.permissions.includes(p.key)}
-                      disabled={me.user.baseRole !== "owner"} onChange={() => togglePerm(r, p.key)} />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <section className="card mt">
+        <header><h2><ShieldCheck size={16} />Roles &amp; permissions</h2>{!isOwner && <span className="faint">Only the Owner can change permissions</span>}</header>
+        <div className="cb"><Note>“Manager” is a permission set, not a hard-coded level. The Owner always has every permission; Admins and Users get exactly their role’s permissions. Every check is enforced by the server.</Note></div>
+        {!roles.data ? <Loading /> : (
+          <div className="tw"><table className="matrix">
+            <thead><tr><th scope="col">Permission</th><th scope="col">Owner</th>{roles.data.roles.map((r) => <th key={r.id} scope="col">{r.name} <span className="faint">({r.members})</span></th>)}</tr></thead>
+            <tbody>
+              {roles.data.permissions.map((p) => (
+                <tr key={p.key}>
+                  <td><b>{p.label}</b><small><code>{p.key}</code></small></td>
+                  <td><span className="up" aria-label="Allowed"><Check size={16} /></span></td>
+                  {roles.data!.roles.map((r) => (
+                    <td key={r.id}>
+                      {isOwner ? <input type="checkbox" aria-label={`${r.name}: ${p.label}`} checked={r.permissions.includes(p.key)} onChange={() => togglePerm(r, p.key)} />
+                        : r.permissions.includes(p.key) ? <span className="up" aria-label="Allowed"><Check size={16} /></span> : <span className="faint" aria-label="Not allowed"><Minus size={16} /></span>}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        )}
       </section>
-    </div>
+      {inviting && <InviteModal roles={roles.data?.roles ?? []} onClose={() => setInviting(false)} />}
+    </>
   );
 }
 
-function TelegramSelf() {
+function AlertDestination() {
   const me = useMe();
-  const [msg, setMsg] = useState<{ kind: "error" | "success"; text: string } | null>(null);
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | undefined>();
   async function save(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const v = String(new FormData(e.currentTarget).get("chat") ?? "").trim();
-    setBusy(true); setMsg(null);
-    try {
-      await api(`/api/team/users/${me.user.id}`, { method: "PATCH", body: { telegramChatId: v || null } });
-      setMsg({ kind: "success", text: v ? "Telegram destination saved." : "Telegram destination removed." });
-    } catch (err) { setMsg({ kind: "error", text: (err as Error).message }); }
+    setBusy(true); setErr(undefined);
+    try { await api(`/api/team/users/${me.user.id}`, { method: "PATCH", body: { telegramChatId: v || null } }); toast(v ? "Escalation alert destination saved" : "Destination removed"); refreshAll(); }
+    catch (e2) { setErr(fieldErrors(e2).telegramChatId ?? (e2 as Error).message); }
     finally { setBusy(false); }
   }
   return (
-    <section aria-labelledby="tg-h" className="max-w-md">
-      <h2 id="tg-h" className="mb-2 text-lg font-semibold">My escalation alerts (Telegram)</h2>
-      <form onSubmit={save} className="flex flex-col gap-3">
-        <Field id="chat" name="chat" label="My Telegram chat ID (numeric)" inputMode="numeric" />
-        <Button busy={busy} type="submit">Save destination</Button>
+    <section className="card mt">
+      <header><h2><Info size={16} />My escalation alerts (I4 · Telegram)</h2></header>
+      <form className="cb row wrap" style={{ alignItems: "flex-end" }} onSubmit={save}>
+        <div style={{ flex: 1, minWidth: 220 }}><Field id="chat" name="chat" label="My Telegram chat ID" hint="Send /start to the workspace bot, then enter the numeric chat ID it replies with." inputMode="numeric" error={err} /></div>
+        <Btn busy={busy} type="submit" style={{ marginBottom: 12 }}>Save destination</Btn>
       </form>
-      {msg && <div className="mt-2"><Notice kind={msg.kind}>{msg.text}</Notice></div>}
     </section>
+  );
+}
+
+function InviteModal({ roles, onClose }: { roles: Role[]; onClose: () => void }) {
+  const me = useMe();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [link, setLink] = useState<string | null>(null);
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    setBusy(true); setError(null); setErrs({});
+    try {
+      const r = await api<{ inviteUrl: string }>("/api/team/invitations", { body: { email: f.get("email"), name: f.get("name"), baseRole: f.get("baseRole"), roleId: f.get("roleId") || null } });
+      setLink(r.inviteUrl); toast("Invitation created"); refreshAll();
+    } catch (err) { setError((err as Error).message); setErrs(fieldErrors(err)); }
+    finally { setBusy(false); }
+  }
+  return (
+    <Modal title="Invite employee" onClose={onClose} footer={link ? <Btn variant="pri" onClick={onClose}>Done</Btn> : <><Btn type="button" onClick={onClose}>Cancel</Btn><Btn variant="pri" busy={busy} type="submit" form="inv"><UserPlus size={16} />Create invitation</Btn></>}>
+      {link ? (
+        <>
+          <p style={{ marginBottom: 10 }}>Share this one-time link with the employee. It expires in 7 days.</p>
+          <div className="row"><input className="inp" readOnly value={link} aria-label="Invitation link" onFocus={(e) => e.currentTarget.select()} />
+            <Btn onClick={() => { navigator.clipboard?.writeText(link).then(() => toast("Link copied"), () => {}); }}>Copy</Btn></div>
+          <div style={{ marginTop: 12 }}><Note>Email delivery of invitations is not part of this build; share the link directly.</Note></div>
+        </>
+      ) : (
+        <form id="inv" onSubmit={submit} noValidate>
+          {error && <div style={{ marginBottom: 12 }}><ErrorBox>{error}</ErrorBox></div>}
+          <Field id="inv-name" name="name" label="Name *" required error={errs.name} />
+          <Field id="inv-email" name="email" type="email" label="Email *" required error={errs.email} />
+          <div className="grid g2">
+            <SelectField id="inv-level" name="baseRole" label="Level" defaultValue="user"><option value="user">User</option>{me.user.baseRole === "owner" && <option value="admin">Admin</option>}</SelectField>
+            <SelectField key={roles.length} id="inv-role" name="roleId" label="Role (permission set)" defaultValue={roles.find((r) => r.name === "Sales")?.id ?? ""}
+              hint="Without a role the employee can still see and act on leads assigned to them.">
+              <option value="">No role</option>{roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</SelectField>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }

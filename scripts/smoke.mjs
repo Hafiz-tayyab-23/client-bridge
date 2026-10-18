@@ -86,7 +86,7 @@ r = await ownerA("/api/assignment-rules", { method: "PUT", body: { maxOpenLeads:
 check("owner configures rules", r.status === 200, r);
 r = await anon(`/api/public/forms/${wsA}`, { body: { name: "Web Visitor", email: `visitor-${run}@demo.test`, message: "Need solar quote" } });
 check("public web form creates lead", r.status === 201, r);
-r = await ownerA("/api/leads?status=open");
+r = await ownerA("/api/leads?state=open");
 const lead = r.data.leads?.[0];
 check("lead has exactly one owner and a deadline", lead && lead.owner_id && lead.ack_deadline && lead.source === "web_form", lead);
 r = await ownerB(`/api/leads/${lead.id}`);
