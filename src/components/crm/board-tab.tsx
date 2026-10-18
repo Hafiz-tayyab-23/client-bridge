@@ -52,12 +52,12 @@ export function BoardTab() {
         <div className="board" role="list">
           {board.data.stages.map((s) => {
             const cards = board.data!.opportunities.filter((o) => o.stage_id === s.id);
-            const tot = cards.some((c) => c.value_masked) ? null : cards.reduce((a, c) => a + Number(c.value_cents ?? 0), 0);
+            const tot = cards.some((c) => c.value_masked) ? null : [...cards.reduce((m, c) => m.set(c.currency, (m.get(c.currency) ?? 0) + Number(c.value_cents ?? 0)), new Map<string, number>())];
             return (
               <section key={s.id} className="col" role="listitem" aria-label={s.name}
                 onDragOver={(e) => e.preventDefault()} onDrop={(e) => { const id = e.dataTransfer.getData("text/plain"); const o = cards.concat(board.data!.opportunities).find((x) => x.id === id); if (o) move(o, s.id); }}>
                 <h3>{s.name}<span className="pill gray">{cards.length}</span></h3>
-                <div className="tot num">{tot === null ? "Value hidden" : money(tot, cards[0]?.currency ?? "usd")}{s.kind !== "open" && ` · ${s.kind}`}</div>
+                <div className="tot num">{tot === null ? "Value hidden" : tot.length === 0 ? "—" : tot.map(([cur, v]) => money(v, cur)).join(" · ")}{s.kind !== "open" && ` · ${s.kind}`}</div>
                 {cards.length === 0 && <div className="faint" style={{ textAlign: "center", padding: 16 }}>No opportunities</div>}
                 {cards.map((o) => (
                   <div key={o.id} className="kc" draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", o.id)}>
@@ -129,9 +129,9 @@ export function OppModal({ pipelines, pipelineId, fields, opp, contactId, onClos
         {can("crm.view_value") ? (
           <div className="grid g2">
             <Field id="o-value" name="value" type="number" min={0} step="0.01" label="Value" defaultValue={opp?.value_cents != null ? Number(opp.value_cents) / 100 : ""} error={errs.value} />
-            <SelectField id="o-cur" name="currency" label="Currency" defaultValue={opp?.currency ?? "usd"}>{["usd", "eur", "gbp", "pkr", "aed"].map((c) => <option key={c} value={c}>{c.toUpperCase()}</option>)}</SelectField>
+            <SelectField id="o-cur" name="currency" label="Currency" defaultValue={opp?.currency ?? "pkr"}>{["pkr", "usd", "eur", "gbp", "aed"].map((c) => <option key={c} value={c}>{c.toUpperCase()}</option>)}</SelectField>
           </div>
-        ) : <><input type="hidden" name="currency" value={opp?.currency ?? "usd"} /><Note>Opportunity values are hidden for your role.</Note></>}
+        ) : <><input type="hidden" name="currency" value={opp?.currency ?? "pkr"} /><Note>Opportunity values are hidden for your role.</Note></>}
         <CustomInputs defs={defs} values={custom} onChange={(k, v) => setCustom({ ...custom, [k]: v })} errors={errs} />
       </form>
     </Modal>

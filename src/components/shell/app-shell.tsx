@@ -45,7 +45,8 @@ export function AppShell({ me, availability: initial, children }: { me: Me; avai
   const [bell, setBell] = useState(false);
   const since = useRef<string | null>(null);
   const summary = useApi<{ counts: { recovery: number; overdue: number } }>("/api/leads/summary", { pollMs: 10000 });
-  const ints = useApi<{ integrations: { provider: string; status: string }[] }>(perms.has("integrations.manage") ? "/api/integrations" : null);
+  const intsRaw = useApi<{ integrations: { provider: string; status: string }[] }>(perms.has("integrations.manage") ? "/api/integrations" : null);
+  const ints = { data: intsRaw.data ? { integrations: intsRaw.data.integrations.filter((i) => i.provider !== "stripe") } : null };
 
   // Realtime awareness (Q11): poll for new notifications; any change refreshes open views.
   useEffect(() => {

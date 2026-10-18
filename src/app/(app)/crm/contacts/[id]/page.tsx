@@ -133,7 +133,7 @@ export default function ContactPage({ params }: { params: Promise<{ id: string }
           )}
           {tab === "pay" && (
             <div className="cb">{v.data.payments.length === 0 ? <div className="empty">No payment requests.</div> : (
-              <div className="tw"><table className="stk"><thead><tr><th scope="col">Amount</th><th scope="col">Status</th><th scope="col">Stripe reference</th><th scope="col">Created</th></tr></thead>
+              <div className="tw"><table className="stk"><thead><tr><th scope="col">Amount</th><th scope="col">Status</th><th scope="col">Provider reference</th><th scope="col">Created</th></tr></thead>
                 <tbody>{v.data.payments.map((p) => <tr key={p.id}><td data-l="Amount"><b className="num">{money(p.amount_cents, p.currency)}</b></td><td data-l="Status"><PayPill s={p.status} /></td><td data-l="Reference"><code>{p.provider_session ?? "—"}</code></td><td data-l="Created">{dateTime(p.created_at)}</td></tr>)}</tbody></table></div>
             )}</div>
           )}

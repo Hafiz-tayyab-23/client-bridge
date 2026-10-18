@@ -97,7 +97,7 @@ try {
   console.log("F5 dashboard + drill-down + preferences");
   await p.goto(`${BASE}/`);
   await p.getByText("Open pipeline value").waitFor();
-  check("pipeline value shown from records", /\$12,500/.test(await p.locator("a.kpi", { hasText: "Open pipeline value" }).innerText()));
+  check("pipeline value shown in PKR from records", /PKR\s?12,500/.test(await p.locator("a.kpi", { hasText: "Open pipeline value" }).innerText()));
   await p.screenshot({ path: `${SHOTS}/12-dashboard.png`, fullPage: true });
   await p.getByRole("button", { name: "Customize" }).click();
   await p.getByRole("switch", { name: "Escalations (24h)" }).uncheck();
@@ -108,6 +108,14 @@ try {
   await p.locator("a.kpi", { hasText: "Recovery queue items" }).click();
   await p.waitForURL(/state=recovery/);
   check("recovery figure drills into filtered list", true);
+
+  console.log("I2 payment request form is Safepay + PKR only");
+  await p.goto(`${BASE}/crm`);
+  await p.locator("tbody tr", { hasText: "Hina Khan" }).click();
+  await p.getByRole("button", { name: "Request payment" }).click();
+  const dlg = await p.getByRole("dialog").innerText();
+  check("request form: Safepay, PKR only, no Stripe", /Safepay/.test(dlg) && !/stripe/i.test(dlg) && (await p.locator("#pr-cur option").allInnerTexts()).join() === "PKR", dlg.slice(0, 200));
+  await p.keyboard.press("Escape");
 
   console.log("F4 audit viewer");
   await p.goto(`${BASE}/audit`);
@@ -125,6 +133,10 @@ try {
       await p.goto(`${BASE}${path}`); await p.waitForTimeout(900);
       const over = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       check(`${vp.width}px ${path} no horizontal scroll`, over <= 1, `overflow ${over}px`);
+      if (vp.width === 1440) {
+        const txt = await p.locator("body").innerText();
+        check(`${path} shows no Stripe/USD`, !/stripe|\$\s?\d|USD/i.test(txt), (txt.match(/.{0,40}(stripe|\$\s?\d|USD).{0,40}/i) ?? [""])[0]);
+      }
     }
   }
   await p.goto(`${BASE}/integrations`); await p.waitForTimeout(1000); await p.screenshot({ path: `${SHOTS}/13-integrations-mobile.png`, fullPage: true });

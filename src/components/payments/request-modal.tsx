@@ -6,7 +6,7 @@ import { refreshAll } from "@/lib/hooks";
 import { Btn, ErrorBox, Field, Modal, Note, SelectField } from "@/components/ui/primitives";
 import { useToast } from "@/components/ui/toast";
 
-/** Creates a real Stripe test-mode Checkout link on the server (I2.1). No card data touches this app. */
+/** Creates a real Safepay sandbox checkout link on the server (I2.1). No card data touches this app. */
 export function PaymentRequestModal({ opportunities, defaultOpp, onClose }: { opportunities: { id: string; title: string; currency?: string }[]; defaultOpp?: string; onClose: () => void }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -19,7 +19,7 @@ export function PaymentRequestModal({ opportunities, defaultOpp, onClose }: { op
     setBusy(true); setError(null); setErrs({});
     try {
       const r = await api<{ payment: { url: string } }>(`/api/crm/opportunities/${f.get("opp")}/payments`, {
-        body: { amount: Number(f.get("amount")), currency: f.get("currency"), description: f.get("description") || undefined, provider: f.get("provider") },
+        body: { amount: Number(f.get("amount")), currency: f.get("currency"), description: f.get("description") || undefined, provider: "safepay" },
       });
       setUrl(r.payment.url); toast("Payment link created"); refreshAll();
     } catch (err) {
@@ -35,7 +35,7 @@ export function PaymentRequestModal({ opportunities, defaultOpp, onClose }: { op
           <p style={{ marginBottom: 10 }}>Send this hosted checkout link to the customer. The status updates from the provider’s verified webhook.</p>
           <div className="row"><input className="inp" readOnly value={url} aria-label="Payment link" onFocus={(e) => e.currentTarget.select()} />
             <Btn onClick={() => navigator.clipboard?.writeText(url).then(() => toast("Link copied"), () => {})}><LinkIcon size={14} />Copy</Btn></div>
-          <div style={{ marginTop: 12 }}><Note>Stripe test card: 4242 4242 4242 4242. Safepay sandbox: use the test cards from Safepay’s sandbox docs.</Note></div>
+          <div style={{ marginTop: 12 }}><Note>Safepay sandbox: pay with a test card from Safepay’s sandbox documentation.</Note></div>
         </>
       ) : (
         <form id="prq" onSubmit={submit} noValidate>
@@ -43,14 +43,12 @@ export function PaymentRequestModal({ opportunities, defaultOpp, onClose }: { op
           {opportunities.length === 0 ? <Note>Create an opportunity first; payments are requested against an opportunity.</Note> : (
             <SelectField id="pr-opp" name="opp" label="Opportunity" defaultValue={defaultOpp}>{opportunities.map((o) => <option key={o.id} value={o.id}>{o.title}</option>)}</SelectField>
           )}
-          <SelectField id="pr-prov" name="provider" label="Provider" defaultValue="stripe" hint="Safepay is a proposed replacement (sandbox); organizer approval pending.">
-            <option value="stripe">Stripe (test mode)</option><option value="safepay">Safepay (sandbox)</option></SelectField>
           <div className="grid g2">
-            <Field id="pr-amt" name="amount" type="number" min={0.5} step="0.01" label="Amount *" error={errs.amount} />
-            <SelectField id="pr-cur" name="currency" label="Currency" defaultValue="usd">{["usd", "eur", "gbp", "pkr", "aed"].map((c) => <option key={c} value={c}>{c.toUpperCase()}</option>)}</SelectField>
+            <Field id="pr-amt" name="amount" type="number" min={0.5} step="0.01" label="Amount (PKR) *" hint="e.g. 1234.50 — charged exactly as entered" error={errs.amount} />
+            <SelectField id="pr-cur" name="currency" label="Currency" defaultValue="pkr" hint="Safepay sandbox charges in PKR."><option value="pkr">PKR</option></SelectField>
           </div>
           <Field id="pr-desc" name="description" label="Description" hint="Shown on the provider checkout page" />
-          <Note>Created on the server in test/sandbox mode. Card details are entered only on the provider’s hosted page.</Note>
+          <Note>Created on the server through Safepay’s sandbox. Card details are entered only on Safepay’s hosted page.</Note>
         </form>
       )}
     </Modal>

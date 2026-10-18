@@ -37,13 +37,13 @@ function Payments() {
 
   return (
     <>
-      <PageHead title="Payments" sub="Stripe test-mode payment requests tied to contacts and opportunities. Statuses change only from Stripe’s verified webhooks." />
+      <PageHead title="Payments" sub="Safepay sandbox payment requests tied to contacts and opportunities. Statuses change only from Safepay’s verified webhooks or an authenticated status check." />
       <div className="grid g4 kp">
         <div className="card kpi"><div className="l"><Ico tone="green"><Banknote size={16} /></Ico>Collected this month</div>
-          <div className="v num">{collected.length ? collected.map((c) => money(c.collected_cents, c.currency)).join(" + ") : money(0)}</div><div className="t">Confirmed payments minus refunds ({dash.data?.scope ?? "…"})</div></div>
+          <div className="v num">{collected.length ? collected.map((c) => money(c.collected_cents, c.currency)).join(" · ") : money(0, "pkr")}</div><div className="t">Confirmed payments minus refunds ({dash.data?.scope ?? "…"})</div></div>
         <div className="card kpi"><div className="l"><Ico tone="amber"><Clock size={16} /></Ico>Pending</div><div className="v num">{list.data?.payments.filter((x) => x.status === "pending").length ?? "–"}</div><div className="t">Awaiting the customer (this page)</div></div>
         <div className="card kpi"><div className="l"><Ico tone="red"><TriangleAlert size={16} /></Ico>Failed or expired</div><div className="v num">{list.data?.payments.filter((x) => ["failed", "expired"].includes(x.status)).length ?? "–"}</div><div className="t">Need follow-up (this page)</div></div>
-        <div className="card kpi"><div className="l"><Ico tone="blue"><Undo2 size={16} /></Ico>Refunded</div><div className="v num">{list.data?.payments.filter((x) => x.status.includes("refunded")).length ?? "–"}</div><div className="t">Refunds made in the Stripe Dashboard</div></div>
+        <div className="card kpi"><div className="l"><Ico tone="blue"><Undo2 size={16} /></Ico>Refunded</div><div className="v num">{list.data?.payments.filter((x) => x.status.includes("refunded")).length ?? "–"}</div><div className="t">Refunds made in the Safepay dashboard</div></div>
       </div>
       <div className="split mt">
         <section className="card">
@@ -66,7 +66,7 @@ function Payments() {
           )}
         </section>
         <div className={`dpanel ${p ? "open" : ""}`}>
-          {!p ? <aside className="card"><div className="cb"><Note>Select a payment to see its Stripe reference and status.</Note></div></aside> : (
+          {!p ? <aside className="card"><div className="cb"><Note>Select a payment to see its Safepay tracker and status.</Note></div></aside> : (
             <aside className="card" aria-label="Payment details">
               <header><h2><Receipt size={16} />Payment</h2><span className="row"><PayPill s={p.status} /><button className="ibtn dclose" onClick={() => setSel(null)} aria-label="Close details"><X size={16} /></button></span></header>
               <div className="cb">
@@ -74,8 +74,8 @@ function Payments() {
                 <dl className="kv" style={{ marginTop: 14 }}>
                   <dt>Contact</dt><dd>{p.contact_id ? <Link className="link" href={`/crm/contacts/${p.contact_id}`}>{p.contact_name}</Link> : "—"}</dd>
                   <dt>Opportunity</dt><dd>{p.opportunity_title ?? "—"}</dd><dt>Requested by</dt><dd>{p.requested_by_name ?? "—"}</dd>
-                  <dt>Provider</dt><dd>{p.provider === "safepay" ? "Safepay (sandbox)" : "Stripe (test mode)"}</dd><dt>{p.provider === "safepay" ? "Tracker" : "Checkout session"}</dt><dd><code>{p.provider_session ?? "—"}</code></dd>
-                  <dt>Payment intent</dt><dd><code>{p.provider_intent ?? "—"}</code></dd>
+                  <dt>Provider</dt><dd>{p.provider === "safepay" ? "Safepay (sandbox)" : "Earlier provider (record kept)"}</dd><dt>{p.provider === "safepay" ? "Safepay tracker" : "Provider reference"}</dt><dd><code>{p.provider_session ?? "—"}</code></dd>
+                  
                   <dt>Refunded</dt><dd>{p.refunded_cents ? money(p.refunded_cents, p.currency) : "—"}</dd>
                   <dt>Created</dt><dd>{dateTime(p.created_at)}</dd><dt>Paid</dt><dd>{dateTime(p.paid_at)}</dd>
                 </dl>
@@ -83,7 +83,7 @@ function Payments() {
                   {p.url && p.status === "pending" && <Btn onClick={() => navigator.clipboard?.writeText(p.url!).then(() => toast("Link copied"), () => {})}><Copy size={14} />Copy payment link</Btn>}
                   {p.provider === "safepay" && <Btn busy={syncing} onClick={() => sync(p.id)}><RefreshCw size={14} />Check status with Safepay</Btn>}
                 </div>
-                <div style={{ marginTop: 14 }}><Note>{p.provider === "safepay" ? "Refunds are made in the Safepay dashboard; the payment.refunded webhook updates this record. Cancel/expiry has no documented webhook, so use Check status." : "Refunds are issued in the Stripe Dashboard; the refund webhook updates this record automatically."}</Note></div>
+                <div style={{ marginTop: 14 }}><Note>{p.provider === "safepay" ? "Refunds are made in the Safepay dashboard; the payment.refunded webhook updates this record. Cancel/expiry has no documented webhook, so use Check status." : "This record was created before Safepay; it is kept unchanged."}</Note></div>
               </div>
             </aside>
           )}

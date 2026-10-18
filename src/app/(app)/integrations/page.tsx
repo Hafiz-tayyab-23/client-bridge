@@ -8,15 +8,14 @@ import { Btn, ErrorBox, Field, Ico, Loading, Modal, Note, PageHead, Pill } from 
 import { useToast } from "@/components/ui/toast";
 
 interface Integration {
-  provider: "telegram" | "stripe" | "google" | "safepay"; status: string; connectionId: string | null; config: Record<string, string | null>;
+  provider: string; status: string; connectionId: string | null; config: Record<string, string | null>;
   lastSuccessAt: string | null; lastError: string | null; webhookUrl: string | null; limits: string[];
   recentErrors: { kind: string; error: string; created_at: string }[];
 }
 interface Ev { id: number; provider: string; direction: string; kind: string; status: string; reference: string | null; summary: string | null; error: string | null; created_at: string }
 
-const META = {
+const META: Record<string, { name: string; cat: string; icon: React.ReactNode }> = {
   telegram: { name: "Telegram bot", cat: "Customer messaging (I1) + escalation alerts (I4)", icon: <MessageCircle size={16} /> },
-  stripe: { name: "Stripe", cat: "Payments (I2) · test mode", icon: <CreditCard size={16} /> },
   google: { name: "Google Calendar", cat: "Appointments (I3)", icon: <CalendarDays size={16} /> },
   safepay: { name: "Safepay", cat: "Payments (I2) · sandbox · proposed replacement", icon: <CreditCard size={16} /> },
 };
@@ -26,7 +25,7 @@ export default function IntegrationsPage() {
   const toast = useToast();
   const data = useApi<{ integrations: Integration[] }>("/api/integrations", { pollMs: 10000 });
   const events = useApi<{ events: Ev[] }>("/api/integrations/events", { pollMs: 10000 });
-  const [connecting, setConnecting] = useState<"stripe" | "telegram" | "safepay" | null>(null);
+  const [connecting, setConnecting] = useState<"telegram" | "safepay" | null>(null);
 
   async function disconnect(p: string) {
     if (!confirm(`Disconnect ${p}? Its stored credentials are deleted.`)) return;
@@ -40,7 +39,7 @@ export default function IntegrationsPage() {
       {data.error && <ErrorBox>{data.error.message}</ErrorBox>}
       {!data.data ? <Loading /> : (
         <div className="grid g3">
-          {data.data.integrations.map((x) => {
+          {data.data.integrations.filter((x) => x.provider !== "stripe").map((x) => {
             const m = META[x.provider];
             return (
               <section key={x.provider} className="card int" aria-label={m.name}>
@@ -57,7 +56,7 @@ export default function IntegrationsPage() {
                   {x.limits.map((l) => <Note key={l}>{l}</Note>)}
                   <div className="row wrap" style={{ marginTop: "auto" }}>
                     {x.provider === "google" ? <a className="btn" href="/calendar"><CalendarDays size={14} />Per-employee connections on Calendar</a> : <>
-                      <Btn variant={x.status === "connected" ? undefined : "pri"} onClick={() => setConnecting(x.provider as "stripe" | "telegram" | "safepay")}><RefreshCw size={14} />{x.status === "not_connected" ? "Connect" : "Reconnect"}</Btn>
+                      <Btn variant={x.status === "connected" ? undefined : "pri"} onClick={() => setConnecting(x.provider as "telegram" | "safepay")}><RefreshCw size={14} />{x.status === "not_connected" ? "Connect" : "Reconnect"}</Btn>
                       {x.status !== "not_connected" && <Btn variant="dng" onClick={() => disconnect(x.provider)}><Unplug size={14} />Disconnect</Btn>}
                     </>}
                   </div>
@@ -70,7 +69,7 @@ export default function IntegrationsPage() {
       <section className="card mt"><header><h2><History size={16} />Synchronization history</h2><span className="faint">Every inbound webhook and outbound call</span></header>
         {!events.data ? <Loading /> : events.data.events.length === 0 ? <div className="empty">No provider traffic yet.</div> : (
           <div className="tw"><table className="stk"><thead><tr><th scope="col">Time</th><th scope="col">Provider</th><th scope="col">Direction</th><th scope="col">Event</th><th scope="col">Result</th><th scope="col">Reference / detail</th></tr></thead>
-            <tbody>{events.data.events.map((e) => (
+            <tbody>{events.data.events.filter((e) => e.provider !== "stripe").map((e) => (
               <tr key={e.id}><td data-l="Time" className="num">{dateTime(e.created_at)}</td><td data-l="Provider"><b>{e.provider}</b></td><td data-l="Direction">{e.direction}</td><td data-l="Event">{e.kind}</td>
                 <td data-l="Result">{e.status === "ok" ? <Pill tone="green" icon={<Check size={12} />}>OK</Pill> : e.status === "duplicate" ? <Pill tone="blue">Duplicate ignored</Pill> : e.status === "retrying" ? <Pill tone="amber">Retrying</Pill> : <Pill tone="red" icon={<X size={12} />}>{e.status === "rejected" ? "Rejected" : "Failed"}</Pill>}</td>
                 <td data-l="Detail"><small>{e.error ?? e.summary ?? ""}</small><code>{e.reference?.slice(0, 28) ?? ""}</code></td></tr>
@@ -82,7 +81,7 @@ export default function IntegrationsPage() {
   );
 }
 
-function ConnectModal({ provider, onClose, onDone }: { provider: "stripe" | "telegram" | "safepay"; onClose: () => void; onDone: () => void }) {
+function ConnectModal({ provider, onClose, onDone }: { provider: "telegram" | "safepay"; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,21 +90,17 @@ function ConnectModal({ provider, onClose, onDone }: { provider: "stripe" | "tel
     const f = new FormData(e.currentTarget);
     setBusy(true); setError(null);
     try {
-      const body = provider === "stripe" ? { secretKey: f.get("secretKey"), webhookSecret: f.get("webhookSecret") }
-        : provider === "safepay" ? { apiKey: f.get("apiKey"), secretKey: f.get("secretKey"), webhookSecret: f.get("webhookSecret") }
+      const body = provider === "safepay" ? { apiKey: f.get("apiKey"), secretKey: f.get("secretKey"), webhookSecret: f.get("webhookSecret") }
         : { botToken: f.get("botToken") };
       const r = await api<{ webhookNote?: string; note?: string }>(`/api/integrations/${provider}`, { method: "PUT", body });
       toast(`Connected. ${r.webhookNote ?? r.note ?? ""}`); onDone();
     } catch (err) { setError((err as Error).message); setBusy(false); }
   }
   return (
-    <Modal title={provider === "stripe" ? "Connect Stripe (test mode)" : provider === "safepay" ? "Connect Safepay (sandbox)" : "Connect Telegram bot"} onClose={onClose} footer={<><Btn onClick={onClose}>Cancel</Btn><Btn variant="pri" busy={busy} type="submit" form="cn">Verify & connect</Btn></>}>
+    <Modal title={provider === "safepay" ? "Connect Safepay (sandbox)" : "Connect Telegram bot"} onClose={onClose} footer={<><Btn onClick={onClose}>Cancel</Btn><Btn variant="pri" busy={busy} type="submit" form="cn">Verify & connect</Btn></>}>
       <form id="cn" onSubmit={submit} noValidate>
         {error && <div style={{ marginBottom: 12 }}><ErrorBox>{error}</ErrorBox></div>}
-        {provider === "stripe" ? <>
-          <Field id="sk" name="secretKey" type="password" autoComplete="off" label="Stripe test secret key *" hint="Dashboard → Developers → API keys (test mode). Starts with sk_test_." />
-          <Field id="wh" name="webhookSecret" type="password" autoComplete="off" label="Webhook signing secret" hint="Optional: leave empty and the server registers this workspace's webhook endpoint with Stripe automatically." />
-        </> : provider === "safepay" ? <>
+        {provider === "safepay" ? <>
           <Field id="spk" name="apiKey" type="password" autoComplete="off" label="Public API Key *" hint="Safepay dashboard → Developers → API (sandbox). Starts with sec_." />
           <Field id="sps" name="secretKey" type="password" autoComplete="off" label="Private API Secret Key *" hint="Same page. Verified by requesting a Safepay passport token." />
           <Field id="spw" name="webhookSecret" type="password" autoComplete="off" label="Private Webhook Secret Key" hint="Developers → Endpoints → View shared secret. Add the endpoint shown on this card after connecting." />

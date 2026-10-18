@@ -25,7 +25,7 @@ export const LIMITS: Record<Provider, string[]> = {
   google: ["Each employee connects their own Google account via OAuth; tokens stay on the server.", "While the Google app is in testing status, only listed test users can connect, and refresh tokens can expire after 7 days (shown as Needs reconnect)."],
   twilio: ["Not used: replaced by Telegram with organizer permission."],
   safepay: [
-    "Sandbox only. Proposed replacement payment provider; organizer approval for Safepay is not yet confirmed. Stripe remains available.",
+    "Sandbox only. Proposed replacement payment provider; organizer approval for Safepay is not yet confirmed.",
     "Paid, failed and refunded outcomes arrive by signed webhook. Cancelled/expired checkouts have no documented webhook — use “Check status with Safepay”.",
     "Amounts are sent in the lowest unit (PKR paisa) — verified on the live sandbox: 123450 shows as Rs.1,234.50 on the hosted checkout.",
   ],

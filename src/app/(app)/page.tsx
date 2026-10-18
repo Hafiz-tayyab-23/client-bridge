@@ -13,7 +13,7 @@ import type { LeadRow } from "@/components/leads/lead-bits";
 interface Dash {
   scope: "company" | "personal"; timezone: string; today_start: string; hidden: string[];
   new_leads_today: number;
-  open_pipeline: { value_masked: boolean; total_cents: number | null; by_stage: { id: string; name: string; pipeline: string; count: number; value_cents: number | null }[] };
+  open_pipeline: { value_masked: boolean; totals: { currency: string; value_cents: number }[] | null; by_stage: { id: string; name: string; pipeline: string; count: number; values: { currency: string; value_cents: number }[] | null }[] };
   avg_first_response_seconds: number | null; first_response_sample: number;
   recovery_queue: number; escalations_24h: number;
   availability: Record<string, number>;
@@ -54,7 +54,9 @@ export default function Dashboard() {
   const show = (k: string) => !x.hidden.includes(k);
   const teamTotal = AVC.reduce((a, [k]) => a + (x.availability[k] ?? 0), 0);
   const paid = x.payments_month;
-  const paidLabel = paid.length === 0 ? money(0) : paid.map((p) => money(p.collected_cents, p.currency)).join(" + ");
+  const multi = (list: { currency: string; value_cents?: number | null; collected_cents?: number | null }[] | null | undefined, empty = "PKR 0") =>
+    !list || list.length === 0 ? empty : list.map((x) => money(x.value_cents ?? x.collected_cents ?? 0, x.currency)).join(" · ");
+  const paidLabel = multi(paid);
 
   async function savePrefs(hidden: string[]) {
     try { await api("/api/dashboard/prefs", { method: "PUT", body: { hidden } }); toast("Dashboard layout saved"); d.reload(); setCustom(false); }
@@ -75,11 +77,11 @@ export default function Dashboard() {
         actions={<><Pill tone={x.scope === "company" ? "purple" : "blue"}>{x.scope === "company" ? "Company scope" : "Personal scope"}</Pill><Btn onClick={() => setCustom(true)}><Settings2 size={16} />Customize</Btn></>} />
       <section className="grid g6 kp" aria-label="Key metrics">
         <Kpi k="new_leads" href={`/leads?createdFrom=${encodeURIComponent(x.today_start)}`} icon={<UserPlus size={16} />} label="New leads today" value={x.new_leads_today} sub="Since midnight, workspace time" />
-        <Kpi k="pipeline" href="/crm?tab=opps" icon={<Briefcase size={16} />} tone="blue" label="Open pipeline value" value={x.open_pipeline.value_masked ? "Hidden" : money(x.open_pipeline.total_cents)} sub={x.open_pipeline.value_masked ? "Requires value permission" : `${x.open_pipeline.by_stage.reduce((a, s) => a + s.count, 0)} open opportunities`} />
+        <Kpi k="pipeline" href="/crm?tab=opps" icon={<Briefcase size={16} />} tone="blue" label="Open pipeline value" value={x.open_pipeline.value_masked ? "Hidden" : multi(x.open_pipeline.totals)} sub={x.open_pipeline.value_masked ? "Requires value permission" : `${x.open_pipeline.by_stage.reduce((a, s) => a + s.count, 0)} open opportunities`} />
         <Kpi k="first_response" href="/leads?state=ack" icon={<Timer size={16} />} tone="green" label="Avg time to first response" value={duration(x.avg_first_response_seconds)} sub={`${x.first_response_sample} acknowledged leads · 30 days`} />
         <Kpi k="recovery" href="/leads?state=recovery" icon={<LifeBuoy size={16} />} tone="red" label="Recovery queue items" value={x.recovery_queue} sub="Overdue, escalated 2+, or idle" />
         <Kpi k="escalations" href="/leads?escalated=24" icon={<Siren size={16} />} tone="amber" label="Escalations (last 24h)" value={x.escalations_24h} sub="Automatic, excludes manual reassignment" />
-        <Kpi k="payments" href="/payments?status=paid" icon={<Banknote size={16} />} tone="green" label="Payments received this month" value={paidLabel} sub={`${paid.reduce((a, p) => a + p.count, 0)} confirmed by Stripe webhook, minus refunds`} />
+        <Kpi k="payments" href="/payments?status=paid" icon={<Banknote size={16} />} tone="green" label="Payments received this month" value={paidLabel} sub={`${paid.reduce((a, p) => a + p.count, 0)} confirmed by Safepay, minus refunds${paid.length > 1 ? " · shown per currency" : ""}`} />
       </section>
 
       <div className="grid r32 mt">
@@ -88,13 +90,13 @@ export default function Dashboard() {
             <header><h2 id="h-pipe"><ChartNoAxesColumn size={16} />Open pipeline by stage</h2><Link className="link" href="/crm?tab=opps">View board <ArrowRight size={14} /></Link></header>
             <div className="cb">
               {x.open_pipeline.by_stage.length === 0 ? <div className="empty">No open stages yet.</div> : x.open_pipeline.by_stage.map((s) => {
-                const max = Math.max(1, ...x.open_pipeline.by_stage.map((t) => (x.open_pipeline.value_masked ? t.count : Number(t.value_cents))));
-                const v = x.open_pipeline.value_masked ? s.count : Number(s.value_cents);
+                const max = Math.max(1, ...x.open_pipeline.by_stage.map((t) => t.count));
+                const v = s.count;
                 return (
                   <div key={s.id} style={{ display: "grid", gridTemplateColumns: "minmax(96px,1fr) 3fr minmax(110px,1.2fr)", gap: 12, alignItems: "center", padding: "8px 0", borderTop: "1px solid var(--line2)" }}>
                     <div><b>{s.name}</b><div className="faint">{s.pipeline} · {s.count} opps</div></div>
                     <div className="bar" role="img" aria-label={`${s.name}: ${s.count} opportunities`}><i style={{ width: `${(v / max) * 100}%` }} /></div>
-                    <div className="right num"><b>{x.open_pipeline.value_masked ? `${s.count} opps` : money(s.value_cents)}</b></div>
+                    <div className="right num"><b>{x.open_pipeline.value_masked ? `${s.count} opps` : multi(s.values, "—")}</b></div>
                   </div>
                 );
               })}
@@ -142,7 +144,7 @@ export default function Dashboard() {
           <section className="card" aria-labelledby="h-pay"><header><h2 id="h-pay"><Banknote size={16} />Collected this month</h2><Link className="link" href="/payments?status=paid">Payments</Link></header>
             <div className="cb">{paid.length === 0 ? <div className="empty">No confirmed payments this month.</div> : (
               <dl className="kv">{paid.map((p) => <Fragment key={p.currency}><dt>{p.currency.toUpperCase()} · {p.count} payment(s)</dt><dd className="num up">{money(p.collected_cents, p.currency)}</dd></Fragment>)}</dl>
-            )}<p className="faint" style={{ marginTop: 10 }}>Collected revenue = payments confirmed by Stripe’s webhook minus confirmed refunds. Unpaid links are not counted.</p></div></section>
+            )}<p className="faint" style={{ marginTop: 10 }}>Collected revenue = payments confirmed by Safepay (verified webhook or status check) minus confirmed refunds, shown separately per currency. Unpaid links are not counted.</p></div></section>
         )}
       </div>
       <p className="faint mt">Signed in as {me.user.name}. Hidden figures: {x.hidden.length ? x.hidden.length : "none"}.</p>

@@ -38,11 +38,18 @@ export async function dashboard(actor: Actor) {
       and a.assigned_at >= now() - interval '24 hours' ${own("a.user_id")}`;
   const showValue = can(actor, "crm.view_value");
   const pipeline = await sql`
-    select s.id, s.name, s.position, p.name as pipeline, count(o.id)::int as count, coalesce(sum(o.value_cents), 0)::bigint as value_cents
+    select s.id, s.name, s.position, p.name as pipeline, count(o.id)::int as count,
+           coalesce(json_agg(json_build_object('currency', o.currency, 'value_cents', o.value_cents)) filter (where o.id is not null), '[]') as items
     from stages s join pipelines p on p.id = s.pipeline_id
     left join opportunities o on o.stage_id = s.id ${own("o.owner_id")}
     where s.workspace_id = ${ws} and s.kind = 'open'
     group by s.id, s.name, s.position, p.name, p.position order by p.position, s.position`;
+  // Values are summed per currency only; different currencies are never added together.
+  const perCurrency = (items: { currency: string; value_cents: number }[]) => {
+    const m = new Map<string, number>();
+    for (const i of items) m.set(i.currency, (m.get(i.currency) ?? 0) + Number(i.value_cents));
+    return [...m.entries()].map(([currency, value_cents]) => ({ currency, value_cents }));
+  };
   const availability = await sql`
     select availability, count(*)::int as n from users where workspace_id = ${ws} and active group by 1`;
   const appointments = await sql`
@@ -66,8 +73,8 @@ export async function dashboard(actor: Actor) {
     new_leads_today: newLeads.n,
     open_pipeline: {
       value_masked: !showValue,
-      total_cents: showValue ? pipeline.reduce((a, s) => a + Number(s.value_cents), 0) : null,
-      by_stage: pipeline.map((s) => ({ id: s.id, name: s.name, pipeline: s.pipeline, count: s.count, value_cents: showValue ? Number(s.value_cents) : null })),
+      totals: showValue ? perCurrency(pipeline.flatMap((s) => s.items)) : null,
+      by_stage: pipeline.map((s) => ({ id: s.id, name: s.name, pipeline: s.pipeline, count: s.count, values: showValue ? perCurrency(s.items) : null })),
     },
     avg_first_response_seconds: ttfr.avg_s, first_response_sample: ttfr.n,
     recovery_queue: recovery.n,

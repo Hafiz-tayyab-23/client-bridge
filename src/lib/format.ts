@@ -1,4 +1,4 @@
-export function money(cents: number | string | null | undefined, currency = "usd") {
+export function money(cents: number | string | null | undefined, currency = "pkr") {
   if (cents === null || cents === undefined) return "Hidden";
   const n = Number(cents) / 100;
   try {
