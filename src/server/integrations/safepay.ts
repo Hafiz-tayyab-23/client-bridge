@@ -67,19 +67,35 @@ export function mapTrackerState(state: string | undefined): "paid" | "cancelled"
 }
 
 /**
- * X-SFPY-SIGNATURE = hex HMAC-SHA512 keyed with the Webhook Secret Key. Safepay's docs sign the JSON
- * payload while the older official SDK signs JSON.stringify(body.data); both documented variants are
- * accepted and the matching variant is reported.
+ * Documented scheme (Safepay docs, "Verify HMAC signatures"): header X-SFPY-SIGNATURE = hex HMAC-SHA512 of the
+ * request payload encoded as a JSON string, keyed with the endpoint's shared secret. We check the payload exactly as
+ * received and its canonical JSON encoding; nothing else (the v1-era "data only" variant is not accepted).
  */
 export function verifySafepayWebhook(rawBody: string, signature: string | null, secret: string): { ok: boolean; variant?: string; reason?: string } {
   if (!signature) return { ok: false, reason: "Missing X-SFPY-SIGNATURE header" };
-  let parsed: { data?: unknown } | null = null;
+  let parsed: unknown;
   try { parsed = JSON.parse(rawBody); } catch { return { ok: false, reason: "Malformed JSON body" }; }
-  const candidates: [string, string][] = [["raw body", rawBody], ["JSON payload", JSON.stringify(parsed)]];
-  if (parsed && typeof parsed === "object" && "data" in parsed) candidates.push(["data object", JSON.stringify(parsed.data)]);
+  const candidates: [string, string][] = [["payload as received", rawBody], ["payload JSON-encoded", JSON.stringify(parsed)]];
   for (const [variant, payload] of candidates) {
     const expected = createHmac("sha512", secret).update(payload, "utf8").digest("hex");
     if (safeEqual(signature.trim().toLowerCase(), expected)) return { ok: true, variant };
   }
   return { ok: false, reason: "Signature does not match payload" };
+}
+
+/** Finds the first value for any of `keys` anywhere in a nested provider response (shape not fully documented). */
+export function findField(obj: unknown, keys: string[], depth = 0): unknown {
+  if (!obj || typeof obj !== "object" || depth > 5) return undefined;
+  for (const k of keys) if (k in (obj as Record<string, unknown>) && typeof (obj as Record<string, unknown>)[k] !== "object") return (obj as Record<string, unknown>)[k];
+  for (const v of Object.values(obj as Record<string, unknown>)) {
+    const found = findField(v, keys, depth + 1);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+/** Key paths (no values) of a response, for diagnosing undocumented shapes without logging data. */
+export function shapeOf(obj: unknown, prefix = "", depth = 0): string[] {
+  if (!obj || typeof obj !== "object" || depth > 3) return [];
+  return Object.entries(obj as Record<string, unknown>).flatMap(([k, v]) => [prefix + k, ...shapeOf(v, `${prefix}${k}.`, depth + 1)]).slice(0, 40);
 }

@@ -1,5 +1,5 @@
 import { route, json, parseId } from "@/server/http";
-import { handleSafepayWebhook } from "@/server/services/safepay-payments";
+import { handleSafepayWebhook } from "@/server/services/safepay-events";
 
 // Safepay → us. Raw body needed for X-SFPY-SIGNATURE (HMAC-SHA512) verification; server-to-server, no CSRF.
 export const POST = route(async (req, ctx: RouteContext<"/api/webhooks/safepay/[connectionId]">) => {

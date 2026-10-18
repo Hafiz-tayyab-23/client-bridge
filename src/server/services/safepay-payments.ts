@@ -6,7 +6,7 @@ import { AppError, badRequest, notFound } from "../http";
 import { activity, audit } from "../audit";
 import { can, requirePerm, type Actor } from "../permissions";
 import { firstReceipt, getConnection, getConnectionById, markHealth, recordEvent, secretsOf, upsertConnection } from "../integrations/store";
-import { checkoutUrl, createSession, fetchTracker, mapTrackerState, passportToken, verifySafepayWebhook } from "../integrations/safepay";
+import { checkoutUrl, createSession, passportToken } from "../integrations/safepay";
 import { appOrigin } from "../origin";
 import { recordLeadAction } from "./leads";
 import { applyStatus, type PaymentRequestInput, type Status } from "./payments";
@@ -77,74 +77,3 @@ export async function createSafepayRequest(actor: Actor, opp: Record<string, unk
   });
 }
 
-interface SpEvent { token?: string; type?: string; data?: { tracker?: string; state?: string; amount?: number; currency?: string; metadata?: Record<string, string> } }
-
-/** Webhook: signature verified before any change; each event token processed once. */
-export async function handleSafepayWebhook(connectionId: string, rawBody: string, signature: string | null) {
-  const conn = await getConnectionById(connectionId);
-  if (!conn || conn.provider !== "safepay") throw notFound();
-  const secret = secretsOf<SpSecrets>(conn)?.webhookSecret;
-  if (!secret) {
-    await recordEvent(sql, { workspaceId: conn.workspace_id, provider: "safepay", direction: "inbound", kind: "webhook", status: "rejected", error: "No webhook secret configured" });
-    throw badRequest("Webhook secret not configured.");
-  }
-  const v = verifySafepayWebhook(rawBody, signature, secret);
-  if (!v.ok) {
-    await recordEvent(sql, { workspaceId: conn.workspace_id, provider: "safepay", direction: "inbound", kind: "webhook", status: "rejected", error: v.reason });
-    throw new AppError(400, "invalid_signature", v.reason ?? "Invalid signature");
-  }
-  const ev = JSON.parse(rawBody) as SpEvent;
-  const tracker = ev.data?.tracker;
-  const eventId = ev.token ?? `${tracker}:${ev.type}:${ev.data?.state}`;
-  return sql.begin(async (tx) => {
-    if (!(await firstReceipt(tx, "safepay", `${conn.workspace_id}:${eventId}`))) {
-      await recordEvent(tx, { workspaceId: conn.workspace_id, provider: "safepay", direction: "inbound", kind: ev.type ?? "event", status: "duplicate", reference: eventId });
-      return { duplicate: true };
-    }
-    const [p] = tracker ? await tx`select * from payments where provider = 'safepay' and provider_session = ${tracker} and workspace_id = ${conn.workspace_id} for update` : [];
-    let changed = false;
-    let note = "";
-    if (p) {
-      const pay = p as Record<string, unknown> & { id: string; workspace_id: string };
-      if (ev.type === "payment.succeeded") changed = await applyStatus(tx, pay, "paid", {});
-      else if (ev.type === "payment.failed") changed = await applyStatus(tx, pay, "failed", {});
-      else if (ev.type === "payment.refunded") {
-        // Assumption (not confirmed in Safepay docs): data.amount is the refunded amount in minor units.
-        const refunded = Math.min(Number(pay.amount_cents), Number(pay.refunded_cents ?? 0) + Number(ev.data?.amount ?? pay.amount_cents));
-        changed = await applyStatus(tx, pay, refunded >= Number(pay.amount_cents) ? "refunded" : "partially_refunded", { refunded });
-      } else {
-        const mapped = mapTrackerState(ev.data?.state);
-        if (mapped) changed = await applyStatus(tx, pay, mapped as Status, {});
-        else note = `Unhandled event type ${ev.type}`;
-      }
-    }
-    await recordEvent(tx, { workspaceId: conn.workspace_id, provider: "safepay", direction: "inbound", kind: ev.type ?? "event", status: "ok", reference: eventId,
-      summary: p ? `${changed ? "Payment updated" : "No change"} (signature: ${v.variant})${note ? ` · ${note}` : ""}` : `No matching payment for tracker ${tracker ?? "?"}` });
-    await markHealth(tx, conn.id, true);
-    return { received: true, matched: Boolean(p), changed };
-  });
-}
-
-/** Authenticated server-to-Safepay status check (covers cancel/expiry, which have no documented webhook). */
-export async function syncSafepayPayment(actor: Actor, paymentId: string) {
-  requirePerm(actor, "crm.view");
-  const mine = can(actor, "crm.view_all") ? null : actor.id;
-  const [p] = await sql`select * from payments where id = ${paymentId} and workspace_id = ${actor.workspaceId} and provider = 'safepay' ${mine ? sql`and requested_by = ${mine}` : sql``}`;
-  if (!p) throw notFound("Safepay payment not found.");
-  const conn = await getConnection(sql, actor.workspaceId, "safepay");
-  const s = secretsOf<SpSecrets>(conn);
-  if (!conn || !s) throw new AppError(409, "integration_not_connected", "Safepay is not connected.");
-  const r = await fetchTracker(s.secretKey, p.provider_session);
-  const data = r.data as { tracker?: { state?: string }; state?: string; status?: string } | undefined;
-  const state = data?.tracker?.state ?? data?.state ?? data?.status;
-  await recordEvent(sql, { workspaceId: actor.workspaceId, provider: "safepay", direction: "outbound", kind: "reporter.payment", status: r.ok ? "ok" : "error", reference: p.provider_session, summary: state ? `State ${state}` : undefined, error: r.error });
-  if (!r.ok) throw new AppError(r.permanent ? 400 : 503, "provider_error", r.error ?? "Safepay status check failed.");
-  const mapped = mapTrackerState(state);
-  if (!mapped) return { state: state ?? "unknown", changed: false, note: "Safepay returned a state this platform does not map; status left unchanged." };
-  const changed = await sql.begin(async (tx) => {
-    const [row] = await tx`select * from payments where id = ${paymentId} for update`;
-    return applyStatus(tx, row as never, mapped as Status, {});
-  });
-  if (changed) await activity(sql, actor.workspaceId, actor.id, { contactId: p.contact_id, opportunityId: p.opportunity_id, type: "payment.synced", summary: `Safepay status checked by ${actor.name}: ${state}` });
-  return { state, changed };
-}
