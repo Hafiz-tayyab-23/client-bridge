@@ -10,7 +10,8 @@
     "db:dev": "node scripts/dev-db.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:migrate:cloud": "node scripts/migrate.mjs --env=.env.cloud"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

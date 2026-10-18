@@ -9,12 +9,16 @@ const g = globalThis as unknown as { __sql?: Sql };
 function create(): Sql {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not configured");
+  const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
   return postgres(url, {
     max: process.env.VERCEL ? 3 : 10,
-    prepare: false,
+    prepare: false, // required by Supabase's transaction pooler (no prepared statements)
+    ssl: local ? false : "require",
     idle_timeout: 20,
     connect_timeout: 10,
     onnotice: () => {},
+    // int8 (money in cents, bigserial ids) as JS numbers; all values stay far below 2^53.
+    types: { bigint: { to: 20, from: [20], serialize: (x: number) => String(x), parse: (x: string) => Number(x) } },
   });
 }
 
