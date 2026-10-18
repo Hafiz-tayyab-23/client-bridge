@@ -83,12 +83,16 @@ export function Loading({ label = "Loading…" }: { label?: string }) {
 
 export function Modal({ title, onClose, children, footer, wide }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Keep the latest onClose without re-running the mount effect: parents pass inline callbacks and
+  // re-render on every keystroke/poll, which previously re-focused the first field while typing.
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     const first = ref.current?.querySelector<HTMLElement>("input:not([type=hidden]),select,textarea,button.pri") ?? ref.current?.querySelector<HTMLElement>("button");
     first?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") closeRef.current();
       if (e.key === "Tab" && ref.current) {
         const f = [...ref.current.querySelectorAll<HTMLElement>("button,input,select,textarea,a[href]")].filter((x) => !x.hasAttribute("disabled"));
         if (!f.length) return;
@@ -98,7 +102,7 @@ export function Modal({ title, onClose, children, footer, wide }: { title: strin
     };
     document.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("keydown", onKey); prev?.focus?.(); };
-  }, [onClose]);
+  }, []); // mount only: focus the first field once when the dialog opens
   return (
     <div className="modal" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={ref} role="dialog" aria-modal="true" aria-label={title} style={wide ? { maxWidth: 640 } : undefined}>
