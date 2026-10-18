@@ -18,14 +18,17 @@ type Pay = Record<string, unknown> & { id: string; workspace_id: string; amount_
 async function confirmWithProvider(secretKey: string, pay: Pay) {
   const r = await fetchTracker(secretKey, pay.provider_session);
   if (!r.ok) return { ok: false, temporary: !r.permanent, reason: r.error ?? "Safepay status check failed", state: undefined as string | undefined, shape: "" };
-  const d = r.data;
-  const state = findField(d, ["state", "status"]) as string | undefined;
-  const token = findField(d, ["token", "tracker"]) as string | undefined;
-  const amount = findField(d, ["amount", "base_amount"]);
-  const currency = findField(d, ["currency", "base_currency"]) as string | undefined;
+  // Field paths observed on the live sandbox reporter API (GET /reporter/api/v1/payments/{tracker}).
+  const d = (r.data ?? {}) as { token?: string; state?: string; metadata?: { order_id?: { value?: string } }; purchase_totals?: { quote_amount?: { amount?: number; currency?: string } } };
+  const state = d.state ?? (findField(d, ["state"]) as string | undefined);
+  const token = d.token;
+  const amount = d.purchase_totals?.quote_amount?.amount;
+  const currency = d.purchase_totals?.quote_amount?.currency;
+  const orderRef = d.metadata?.order_id?.value;
   const shape = shapeOf(d).join(",");
   const problems: string[] = [];
-  if (token !== undefined && String(token).startsWith("track_") && token !== pay.provider_session) problems.push("tracker mismatch");
+  if (token !== pay.provider_session) problems.push("tracker mismatch");
+  if (orderRef !== undefined && orderRef !== pay.id) problems.push("order reference mismatch");
   if (amount === undefined) problems.push("provider response has no amount");
   else if (Number(amount) !== Number(pay.amount_cents)) problems.push(`amount mismatch (provider ${amount}, expected ${pay.amount_cents} minor units)`);
   if (!currency) problems.push("provider response has no currency");
@@ -63,8 +66,8 @@ export async function handleSafepayWebhook(connectionId: string, rawBody: string
   }
   const pay = p as Pay;
   const refProblems: string[] = [];
-  const metaRef = ev.data?.metadata?.payment_id;
-  if (metaRef && metaRef !== pay.id) refProblems.push("metadata payment_id does not match");
+  const metaRef = ev.data?.metadata?.order_id ?? ev.data?.metadata?.payment_id;
+  if (metaRef && metaRef !== pay.id) refProblems.push("order reference (metadata.order_id) does not match");
   if (ev.type === "payment.succeeded") {
     if (ev.data?.amount !== undefined && Number(ev.data.amount) !== Number(pay.amount_cents)) refProblems.push(`webhook amount ${ev.data.amount} does not equal expected ${pay.amount_cents}`);
     if (ev.data?.currency && ev.data.currency.toLowerCase() !== pay.currency.toLowerCase()) refProblems.push(`webhook currency ${ev.data.currency} does not equal ${pay.currency.toUpperCase()}`);

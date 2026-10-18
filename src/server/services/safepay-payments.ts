@@ -54,7 +54,7 @@ export async function createSafepayRequest(actor: Actor, opp: Record<string, unk
   const amountMinor = Math.round(input.amount * 100);
   const [payment] = await sql`insert into payments (workspace_id, opportunity_id, contact_id, requested_by, amount_cents, currency, status, provider)
     values (${actor.workspaceId}, ${opp.id}, ${opp.contact_id}, ${actor.id}, ${amountMinor}, ${input.currency}, 'pending', 'safepay') returning *`;
-  const session = await createSession(s.apiKey, s.secretKey, amountMinor, input.currency, { payment_id: payment.id, workspace_id: actor.workspaceId });
+  const session = await createSession(s.apiKey, s.secretKey, amountMinor, input.currency, { order_id: payment.id });
   const tracker = session.data?.tracker?.token;
   const tbt = session.ok && tracker ? await passportToken(s.secretKey) : null;
   const ok = Boolean(session.ok && tracker && tbt?.ok && tbt.data);

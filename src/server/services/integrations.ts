@@ -27,7 +27,7 @@ export const LIMITS: Record<Provider, string[]> = {
   safepay: [
     "Sandbox only. Proposed replacement payment provider; organizer approval for Safepay is not yet confirmed. Stripe remains available.",
     "Paid, failed and refunded outcomes arrive by signed webhook. Cancelled/expired checkouts have no documented webhook — use “Check status with Safepay”.",
-    "Amounts are sent in the lowest currency unit per Safepay's docs (PKR unit handling not explicitly documented).",
+    "Amounts are sent in the lowest unit (PKR paisa) — verified on the live sandbox: 123450 shows as Rs.1,234.50 on the hosted checkout.",
   ],
 };
 

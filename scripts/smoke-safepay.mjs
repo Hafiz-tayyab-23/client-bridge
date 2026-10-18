@@ -25,7 +25,7 @@ const send = (ev, { key = secret, mode = "payload" } = {}) => {
   const sig = createHmac("sha512", key).update(mode === "payload" ? body : JSON.stringify(ev.data)).digest("hex");
   return fetch(`${BASE}/api/webhooks/safepay/${conn.id}`, { method: "POST", headers: { "content-type": "application/json", "x-sfpy-signature": sig }, body }).then(async (r) => ({ status: r.status, data: await r.json().catch(() => ({})) }));
 };
-const ev = (token, type, extra = {}) => ({ token, type, version: "2.0.0", data: { tracker, state: "TRACKER_ENDED", amount: 500000, currency: "PKR", metadata: { payment_id: pay.id }, ...extra } });
+const ev = (token, type, extra = {}) => ({ token, type, version: "2.0.0", data: { tracker, state: "TRACKER_ENDED", amount: 500000, currency: "PKR", metadata: { order_id: pay.id }, ...extra } });
 const st = async () => (await sql`select status from payments where id = ${pay.id}`)[0].status;
 
 let r = await send(ev(`evt_a_${run}`, "payment.succeeded"), { key: "wrong-secret-wrong-secret" });
@@ -36,7 +36,7 @@ r = await send(ev(`evt_c_${run}`, "payment.succeeded", { amount: 1 }));
 check("valid signature but wrong amount → not recorded", r.status === 200 && r.data.recorded === false && (await st()) === "pending", r);
 r = await send(ev(`evt_d_${run}`, "payment.succeeded", { currency: "USD" }));
 check("valid signature but wrong currency → not recorded", r.data.recorded === false && (await st()) === "pending", r);
-r = await send(ev(`evt_e_${run}`, "payment.succeeded", { metadata: { payment_id: "00000000-0000-0000-0000-000000000000" } }));
+r = await send(ev(`evt_e_${run}`, "payment.succeeded", { metadata: { order_id: "00000000-0000-0000-0000-000000000000" } }));
 check("wrong payment reference → not recorded", r.data.recorded === false && (await st()) === "pending", r);
 r = await send(ev(`evt_f_${run}`, "payment.succeeded"));
 check("valid event but Safepay cannot confirm tracker (fake key) → not recorded", (r.data.recorded === false || r.status === 503) && (await st()) === "pending", r);

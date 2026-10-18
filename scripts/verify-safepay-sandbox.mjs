@@ -26,7 +26,7 @@ const call = (method, path, body) => fetch(API + path, { method, headers: { "Con
 const shape = (o, p = "", d = 0) => (!o || typeof o !== "object" || d > 3 ? [] : Object.entries(o).flatMap(([k, v]) => [`${p}${k}${typeof v !== "object" || v === null ? `=${typeof v === "string" && /secret|token|tbt/i.test(k) ? "…" : JSON.stringify(v)?.slice(0, 40)}` : ""}`, ...shape(v, `${p}${k}.`, d + 1)]));
 
 const requestedMinor = 123450; // PKR 1,234.50 if "lowest denomination" means paisa
-const created = await call("POST", "/order/payments/v3/", { merchant_api_key: s.apiKey, intent: "CYBERSOURCE", mode: "payment", currency: "PKR", amount: requestedMinor, metadata: { probe: "amount-units" } });
+const created = await call("POST", "/order/payments/v3/", { merchant_api_key: s.apiKey, intent: "CYBERSOURCE", mode: "payment", currency: "PKR", amount: requestedMinor, metadata: { order_id: "probe-amount-units" } });
 console.log("create session:", created.status);
 const tracker = created.json?.data?.tracker?.token;
 if (!tracker) { console.log("create response fields:", shape(created.json).join(" | ")); process.exit(1); }
