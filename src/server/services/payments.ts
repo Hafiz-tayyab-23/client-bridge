@@ -15,6 +15,7 @@ export const PaymentRequestInput = z.object({
   amount: z.number().positive().max(999999),
   currency: z.enum(CURRENCIES),
   description: z.string().trim().max(200).optional(),
+  provider: z.enum(["stripe", "safepay"]).default("stripe"),
 });
 
 type StripeSecrets = { secretKey: string; webhookSecret?: string };
@@ -27,6 +28,7 @@ export async function createPaymentRequest(actor: Actor, opportunityId: string, 
     select o.*, c.name as contact_name, c.email as contact_email from opportunities o left join contacts c on c.id = o.contact_id
     where o.id = ${opportunityId} and o.workspace_id = ${actor.workspaceId} ${mine ? sql`and o.owner_id = ${mine}` : sql``}`;
   if (!opp) throw notFound("Opportunity not found.");
+  if (input.provider === "safepay") return (await import("./safepay-payments")).createSafepayRequest(actor, opp as never, input);
   const conn = await getConnection(sql, actor.workspaceId, "stripe");
   const secrets = secretsOf<StripeSecrets>(conn);
   if (!conn || conn.status === "not_connected" || !secrets?.secretKey) {
@@ -68,11 +70,11 @@ export async function createPaymentRequest(actor: Actor, opportunityId: string, 
 }
 
 // ───────── Webhook (I2.2–I2.5) ─────────
-type Status = "pending" | "paid" | "failed" | "expired" | "refunded" | "partially_refunded";
+export type Status = "pending" | "paid" | "failed" | "expired" | "cancelled" | "refunded" | "partially_refunded";
 
-async function applyStatus(tx: Tx, p: Record<string, unknown> & { id: string; workspace_id: string }, status: Status, fields: { intent?: string | null; refunded?: number; reason?: string }) {
+export async function applyStatus(tx: Tx, p: Record<string, unknown> & { id: string; workspace_id: string }, status: Status, fields: { intent?: string | null; refunded?: number; reason?: string }) {
   // A paid payment is never downgraded by late failure/expiry events.
-  if (["paid", "refunded", "partially_refunded"].includes(p.status as string) && (status === "failed" || status === "expired")) return false;
+  if (["paid", "refunded", "partially_refunded"].includes(p.status as string) && (status === "failed" || status === "expired" || status === "cancelled" || status === "pending")) return false;
   const [after] = await tx`
     update payments set status = ${status},
       provider_intent = coalesce(${fields.intent ?? null}, provider_intent),
@@ -86,6 +88,8 @@ async function applyStatus(tx: Tx, p: Record<string, unknown> & { id: string; wo
     : status === "refunded" ? `Payment refunded in full: ${amount}`
     : status === "partially_refunded" ? `Partial refund: ${(Number(after.refunded_cents) / 100).toFixed(2)} of ${amount}`
     : status === "expired" ? `Payment link expired (${amount})`
+    : status === "cancelled" ? `Payment cancelled by the customer (${amount})`
+    : status === "pending" ? `Payment pending (${amount})`
     : `Payment failed (${amount})${fields.reason ? `: ${fields.reason}` : ""}`;
   await activity(tx, p.workspace_id, null, { contactId: after.contact_id, opportunityId: after.opportunity_id, type: `payment.${status}`, summary });
   await audit(tx, p.workspace_id, null, { event: `payment.${status}`, targetType: "payment", targetId: p.id, before: { status: p.status, refunded_cents: p.refunded_cents }, after: { status, refunded_cents: after.refunded_cents } });
@@ -171,7 +175,7 @@ export async function listPayments(actor: Actor, q: { status?: string; page: num
   const where = sql`p.workspace_id = ${actor.workspaceId} ${mine ? sql`and p.requested_by = ${mine}` : sql``} ${q.status ? sql`and p.status = ${q.status}` : sql``}`;
   const [{ total }] = await sql`select count(*)::int as total from payments p where ${where}`;
   const rows = await sql`
-    select p.id, p.status, p.amount_cents, p.currency, p.refunded_cents, p.url, p.provider_session, p.provider_intent, p.created_at, p.paid_at,
+    select p.id, p.provider, p.status, p.amount_cents, p.currency, p.refunded_cents, p.url, p.provider_session, p.provider_intent, p.created_at, p.paid_at,
            p.opportunity_id, o.title as opportunity_title, p.contact_id, c.name as contact_name, p.requested_by, u.name as requested_by_name
     from payments p left join opportunities o on o.id = p.opportunity_id left join contacts c on c.id = p.contact_id left join users u on u.id = p.requested_by
     where ${where} order by p.created_at desc limit ${q.pageSize} offset ${(q.page - 1) * q.pageSize}`;

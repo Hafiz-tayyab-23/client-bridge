@@ -2,7 +2,7 @@ import "server-only";
 import { sql, type Db } from "../db";
 import { decryptJson, encryptJson } from "../crypto";
 
-export type Provider = "twilio" | "stripe" | "google" | "telegram";
+export type Provider = "twilio" | "stripe" | "google" | "telegram" | "safepay";
 
 export interface Connection {
   id: string;

@@ -19,12 +19,12 @@ export function PaymentRequestModal({ opportunities, defaultOpp, onClose }: { op
     setBusy(true); setError(null); setErrs({});
     try {
       const r = await api<{ payment: { url: string } }>(`/api/crm/opportunities/${f.get("opp")}/payments`, {
-        body: { amount: Number(f.get("amount")), currency: f.get("currency"), description: f.get("description") || undefined },
+        body: { amount: Number(f.get("amount")), currency: f.get("currency"), description: f.get("description") || undefined, provider: f.get("provider") },
       });
-      setUrl(r.payment.url); toast("Stripe payment link created"); refreshAll();
+      setUrl(r.payment.url); toast("Payment link created"); refreshAll();
     } catch (err) {
       const ae = err as ApiError;
-      setError(ae.body?.code === "integration_not_connected" ? `${ae.message} (Integrations → Stripe → enter a test secret key.)` : ae.message);
+      setError(ae.message);
       setErrs(fieldErrors(err));
     } finally { setBusy(false); }
   }
@@ -32,10 +32,10 @@ export function PaymentRequestModal({ opportunities, defaultOpp, onClose }: { op
     <Modal title="New payment request" onClose={onClose} footer={url ? <Btn variant="pri" onClick={onClose}>Done</Btn> : <><Btn onClick={onClose}>Cancel</Btn><Btn variant="pri" busy={busy} type="submit" form="prq" disabled={opportunities.length === 0}><CreditCard size={16} />Create link</Btn></>}>
       {url ? (
         <>
-          <p style={{ marginBottom: 10 }}>Send this Stripe Checkout link to the customer. The status updates automatically from Stripe’s verified webhook.</p>
+          <p style={{ marginBottom: 10 }}>Send this hosted checkout link to the customer. The status updates from the provider’s verified webhook.</p>
           <div className="row"><input className="inp" readOnly value={url} aria-label="Payment link" onFocus={(e) => e.currentTarget.select()} />
             <Btn onClick={() => navigator.clipboard?.writeText(url).then(() => toast("Link copied"), () => {})}><LinkIcon size={14} />Copy</Btn></div>
-          <div style={{ marginTop: 12 }}><Note>Test mode: pay with card 4242 4242 4242 4242, any future date and any CVC.</Note></div>
+          <div style={{ marginTop: 12 }}><Note>Stripe test card: 4242 4242 4242 4242. Safepay sandbox: use the test cards from Safepay’s sandbox docs.</Note></div>
         </>
       ) : (
         <form id="prq" onSubmit={submit} noValidate>
@@ -43,12 +43,14 @@ export function PaymentRequestModal({ opportunities, defaultOpp, onClose }: { op
           {opportunities.length === 0 ? <Note>Create an opportunity first; payments are requested against an opportunity.</Note> : (
             <SelectField id="pr-opp" name="opp" label="Opportunity" defaultValue={defaultOpp}>{opportunities.map((o) => <option key={o.id} value={o.id}>{o.title}</option>)}</SelectField>
           )}
+          <SelectField id="pr-prov" name="provider" label="Provider" defaultValue="stripe" hint="Safepay is a proposed replacement (sandbox); organizer approval pending.">
+            <option value="stripe">Stripe (test mode)</option><option value="safepay">Safepay (sandbox)</option></SelectField>
           <div className="grid g2">
             <Field id="pr-amt" name="amount" type="number" min={0.5} step="0.01" label="Amount *" error={errs.amount} />
             <SelectField id="pr-cur" name="currency" label="Currency" defaultValue="usd">{["usd", "eur", "gbp", "pkr", "aed"].map((c) => <option key={c} value={c}>{c.toUpperCase()}</option>)}</SelectField>
           </div>
-          <Field id="pr-desc" name="description" label="Description" hint="Shown on Stripe's checkout page" />
-          <Note>Created in Stripe test mode on the server. Card details are entered only on Stripe’s hosted page.</Note>
+          <Field id="pr-desc" name="description" label="Description" hint="Shown on the provider checkout page" />
+          <Note>Created on the server in test/sandbox mode. Card details are entered only on the provider’s hosted page.</Note>
         </form>
       )}
     </Modal>

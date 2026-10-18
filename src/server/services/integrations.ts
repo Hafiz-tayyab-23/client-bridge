@@ -24,6 +24,11 @@ export const LIMITS: Record<Provider, string[]> = {
   ],
   google: ["Each employee connects their own Google account via OAuth; tokens stay on the server.", "While the Google app is in testing status, only listed test users can connect, and refresh tokens can expire after 7 days (shown as Needs reconnect)."],
   twilio: ["Not used: replaced by Telegram with organizer permission."],
+  safepay: [
+    "Sandbox only. Proposed replacement payment provider; organizer approval for Safepay is not yet confirmed. Stripe remains available.",
+    "Paid, failed and refunded outcomes arrive by signed webhook. Cancelled/expired checkouts have no documented webhook — use “Check status with Safepay”.",
+    "Amounts are sent in the lowest currency unit per Safepay's docs (PKR unit handling not explicitly documented).",
+  ],
 };
 
 export async function listIntegrations(actor: Actor) {
@@ -35,7 +40,7 @@ export async function listIntegrations(actor: Actor) {
     select provider, kind, error, created_at from integration_events
     where workspace_id = ${actor.workspaceId} and status in ('error','rejected') order by created_at desc limit 20`;
   const base = await appOrigin();
-  const providers: Provider[] = ["telegram", "stripe", "google"];
+  const providers: Provider[] = ["telegram", "stripe", "safepay", "google"];
   return providers.map((p) => {
     const conns = rows.filter((r) => r.provider === p);
     const ws = conns.find((c) => !c.user_id);
